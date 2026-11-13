@@ -137,7 +137,7 @@ test("account disabling does not silently switch accounts and quota stays explic
   await s.accountAction("a", "disable");
   assert.equal(s.vault.active, null);
   assert.equal(s.models.length, 0);
-  assert.equal((await s.quota("a")).status, "unsupported");
+  assert.equal((await s.quota("a")).status, "authorization_required");
   await assert.rejects(() => s.selectAccount("a"), /启用/);
   await s.selectAccount("b");
   assert.equal(s.vault.active, "b");

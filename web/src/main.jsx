@@ -352,7 +352,7 @@ function Console() {
               <Descriptions
                 column={1}
                 items={[
-                  { key: "v", label: "ModelBridge", children: "0.3.0" },
+                  { key: "v", label: "ModelBridge", children: "0.3.1" },
                   {
                     key: "e",
                     label: "请求处理",
@@ -744,7 +744,7 @@ function Console() {
                 <Text type="secondary">你的账号，你的模型，你的工作流。</Text>
               </div>
               <Text type="secondary" className="local-label">
-                本机运行 · 0.3.0
+                本机运行 · 0.3.1
               </Text>
             </div>
             {(error || state?.lastError?.message) && (

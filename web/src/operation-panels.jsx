@@ -413,7 +413,7 @@ export function SettingsPanel({ api, action, blocked }) {
         </Form>
       )}
       <Paragraph className="spaced">
-        ModelBridge 0.3.0 · React + Ant Design · Codex OAuth · 独立运行
+        ModelBridge 0.3.1 · React + Ant Design · Codex OAuth · 独立运行
       </Paragraph>
     </Card>
   );

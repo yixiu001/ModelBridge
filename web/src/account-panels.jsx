@@ -487,6 +487,15 @@ export function AccountsPanel({
 }
 
 export function QuotaPanel({ state, api, action, blocked }) {
+  const [quotaLoginUrl, setQuotaLoginUrl] = useState("");
+  useEffect(() => {
+    if (!state.quotaLoginPending) setQuotaLoginUrl("");
+  }, [state.quotaLoginPending]);
+  const locked = blocked || state.loginPending || !!state.gatewayActive;
+  async function authorize(key) {
+    const result = await action(() => api("accounts/quota/login", { key }));
+    if (result) setQuotaLoginUrl(result.url);
+  }
   const [search, setSearch] = useState(""),
     [filter, setFilter] = useState("all"),
     [sort, setSort] = useState("default"),
@@ -555,7 +564,7 @@ export function QuotaPanel({ state, api, action, blocked }) {
             ) : (
               <Button
                 type="primary"
-                disabled={blocked || !rows.length || !state.engine.reachable}
+                disabled={locked || !rows.length}
                 onClick={refreshAll}
               >
                 刷新当前筛选账号
@@ -608,20 +617,57 @@ export function QuotaPanel({ state, api, action, blocked }) {
           />
         )}
       </Card>
+      {state.quotaLoginPending && (
+        <Alert
+          className="spaced"
+          type="info"
+          title="正在等待配额授权"
+          description={
+            <Space wrap>
+              <Text>
+                请用与会员账号相同的 ChatGPT 账号完成登录，然后刷新配额。
+              </Text>
+              <Button
+                type="primary"
+                href={quotaLoginUrl || undefined}
+                disabled={!quotaLoginUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                打开配额授权页面
+              </Button>
+              <Button onClick={() => action(() => api("login/cancel", {}))}>
+                取消配额授权
+              </Button>
+            </Space>
+          }
+        />
+      )}
       <Row gutter={[16, 16]}>
         {rows.map((a) => (
           <Col xs={24} lg={compact ? 8 : 12} key={a.key}>
             <Card
               title={a.note || a.label}
               extra={
-                <Button
-                  disabled={blocked || running || !state.engine.reachable}
-                  onClick={() =>
-                    action(() => api("accounts/quota", { key: a.key }))
-                  }
-                >
-                  刷新配额
-                </Button>
+                <Space>
+                  <Button
+                    disabled={locked || running}
+                    onClick={() =>
+                      action(() => api("accounts/quota", { key: a.key }))
+                    }
+                  >
+                    刷新配额
+                  </Button>
+                  {a.quota?.status === "authorization_required" && (
+                    <Button
+                      type="primary"
+                      disabled={locked || running}
+                      onClick={() => authorize(a.key)}
+                    >
+                      授权读取配额
+                    </Button>
+                  )}
+                </Space>
               }
             >
               <Space wrap>
@@ -663,6 +709,15 @@ export function QuotaPanel({ state, api, action, blocked }) {
                 ))
               )}
               <Paragraph type="secondary" className="spaced">
+                {a.quota?.status === "available" && (
+                  <span>
+                    额外积分：
+                    {a.quota.creditsUnlimited
+                      ? "不限额"
+                      : (a.quota.creditBalance ?? "未返回")}
+                    <br />
+                  </span>
+                )}
                 查询时间：{date(a.quota?.checkedAt)}
               </Paragraph>
             </Card>

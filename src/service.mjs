@@ -214,6 +214,7 @@ export class BridgeService {
       .digest("hex");
     const next = structuredClone(this.vault);
     next.accounts[key] = {
+      ...next.accounts[key],
       client_id: clientId,
       subject: identity.sub,
       email: identity.email,

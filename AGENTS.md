@@ -15,3 +15,5 @@
 - 2026-11-14 当前范围覆盖之前运行策略：CLIProxyAPI 作为唯一推理底层，旧适配器退出运行路径；只做 Codex OAuth，不做 API 提供商、其他平台和插件。界面使用 React + Ant Design；允许复用 CLIProxyAPI/官方管理中心代码并保留许可。用户授权浏览器授权操作、验证后提交推送。ModelBridge 连接密钥保存在 DPAPI 文件；会员凭据由已授权的 CLIProxyAPI 原生管理，不导入其他应用凭据。
 
 - 2026-11-14 最新范围覆盖前条：ModelBridge 必须独立运行，不依赖 CLIProxyAPI 程序、服务或整体软件包。只允许选择性移植需要的代码并保留来源许可。继续 Codex OAuth、React + Ant Design，完善已有八页功能，验证后提交推送。既有浏览器授权和本机联调授权继续有效。
+
+- 2026-11-14 已获本次操作确认：为 ModelBridge 完成独立 Codex 配额 OAuth，允许点击官方确认页“继续”，将可刷新凭据保存在本机 DPAPI 文件；验证后提交推送。只移植必要代码，不依赖 CLIProxyAPI 服务。

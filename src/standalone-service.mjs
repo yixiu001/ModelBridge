@@ -3,13 +3,26 @@ import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { BridgeService, safeError } from "./service.mjs";
 import { saveVault } from "./vault.mjs";
-import { RESOURCE, TOKEN_ENDPOINT, DIRECT_SCOPE } from "./auth.mjs";
+import {
+  RESOURCE,
+  TOKEN_ENDPOINT,
+  DIRECT_SCOPE,
+  acceptCallback,
+  validateIdToken,
+} from "./auth.mjs";
+import {
+  beginQuotaLogin,
+  listenQuotaCallback,
+  CODEX_CLIENT,
+  CODEX_TOKEN,
+} from "./quota-auth.mjs";
 import {
   normalizeCatalog,
   requireModel,
   readResponseStream,
 } from "./protocol.mjs";
 import { runProbe } from "./probe-jobs.mjs";
+import { parseCodexQuota } from "./vendor/codex-quota.mjs";
 const hash = (v) =>
   createHash("sha256").update(JSON.stringify(v)).digest("hex");
 const fail = (message, code = "invalid_input", httpStatus = 400) => {
@@ -24,6 +37,7 @@ export class StandaloneService extends BridgeService {
     this.timeoutSeconds = 180;
     this.traffic = [];
     this.quotas = new Map();
+    this.quotaListener = options.quotaListener || listenQuotaCallback;
     this.upstreamModels = [];
     this.prefs = {
       timeoutSeconds: 180,
@@ -84,6 +98,7 @@ export class StandaloneService extends BridgeService {
       this.job ||
       this.gatewayActive ||
       this.mutating ||
+      this.quotaReading ||
       this.refreshPromise ||
       this.refreshing ||
       this.pending
@@ -96,6 +111,7 @@ export class StandaloneService extends BridgeService {
   }
   async poll() {
     if (this.pending?.expiresAt < Date.now()) {
+      this.closeQuotaCallback();
       this.pending = null;
       this.lastError = {
         code: "login_expired",
@@ -110,7 +126,7 @@ export class StandaloneService extends BridgeService {
       phase: "独立 Codex OAuth 网关",
       engine: {
         name: "ModelBridge",
-        version: "0.3.0",
+        version: "0.3.1",
         mode: "standalone",
         configured: !!this.account,
         reachable: this.reachable,
@@ -135,14 +151,16 @@ export class StandaloneService extends BridgeService {
           (t) => t.account === key && t.status === "failed",
         ).length,
         quota: this.quotas.get(key) || {
-          status: "unsupported",
-          message:
-            "当前会员授权通道未提供可核验的配额读取接口；不会推算剩余额度。",
+          status: a.quotaAuth ? "unqueried" : "authorization_required",
+          message: a.quotaAuth
+            ? "尚未查询，请刷新配额"
+            : "请先授权读取配额，使用与当前账号相同的 ChatGPT 账号登录。",
           checkedAt: null,
         },
       })),
       traffic: this.traffic,
       loginExpiresAt: this.pending?.expiresAt,
+      quotaLoginPending: this.pending?.purpose === "quota",
       models: this.models.map((m) => ({
         ...m,
         checks: Object.fromEntries(
@@ -218,6 +236,8 @@ export class StandaloneService extends BridgeService {
       fail("授权正在处理", "busy", 409);
     this.mutating = true;
     try {
+      if (this.pending?.purpose === "quota")
+        return await this.finishQuotaLogin(query);
       await super.finishLogin(query);
       await this.loadReports();
       await this.refreshCatalog({ internal: true });
@@ -231,6 +251,7 @@ export class StandaloneService extends BridgeService {
   }
   cancelLogin() {
     if (this.mutating) fail("正在完成授权，请稍候", "busy", 409);
+    this.closeQuotaCallback();
     this.pending = null;
     return { ok: true };
   }
@@ -365,15 +386,212 @@ export class StandaloneService extends BridgeService {
     };
   }
   async quota(key) {
-    if (!this.vault.accounts[key]) fail("账号不存在");
-    const result = {
-      status: "unsupported",
-      message:
-        "当前会员授权通道未提供可核验的配额读取接口。用量统计请查看本机请求记录。",
-      checkedAt: new Date().toISOString(),
+    this.idle();
+    const account = this.vault.accounts[key];
+    if (!account) fail("账号不存在");
+    this.mutating = true;
+    this.quotaReading = true;
+    let result;
+    try {
+      let grant = account.quotaAuth;
+      if (!grant)
+        return this.setQuota(key, {
+          status: "authorization_required",
+          message: "请先授权读取配额，使用与当前账号相同的 ChatGPT 账号登录。",
+        });
+      if (grant.expiresAt <= Date.now() + 60000) {
+        const tokens = await this.json(CODEX_TOKEN, {
+          method: "POST",
+          body: new URLSearchParams({
+            grant_type: "refresh_token",
+            client_id: CODEX_CLIENT,
+            refresh_token: grant.refresh_token,
+          }),
+        });
+        this.validateTokens(tokens);
+        const next = structuredClone(this.vault);
+        grant = {
+          ...grant,
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token || grant.refresh_token,
+          expiresAt: Date.now() + tokens.expires_in * 1000,
+        };
+        next.accounts[key].quotaAuth = grant;
+        await saveVault(this.vaultPath, next);
+        this.vault = next;
+      }
+      // Credential writes are complete. The read must not block model requests;
+      // quotaReading still fences account removal/switching until it finishes.
+      this.mutating = false;
+      const response = await this.fetcher(
+        "https://chatgpt.com/backend-api/wham/usage",
+        {
+          method: "GET",
+          headers: {
+            Authorization: "Bearer " + grant.access_token,
+            "Chatgpt-Account-Id": grant.accountId,
+            Accept: "application/json",
+          },
+          redirect: "error",
+          signal: AbortSignal.timeout(30000),
+        },
+      );
+      if (!response.ok) {
+        await response.body?.cancel();
+        result = {
+          status: [401, 403].includes(response.status)
+            ? "authorization_required"
+            : "error",
+          httpStatus: response.status,
+          message: [401, 403].includes(response.status)
+            ? "配额授权已失效或无权访问，请重新授权读取配额。"
+            : `官方配额查询失败（${response.status}），请稍后刷新。`,
+        };
+      } else
+        result = {
+          status: "available",
+          ...parseCodexQuota(await response.json()),
+        };
+    } catch (e) {
+      const status = e.details?.httpStatus;
+      result = {
+        status: [400, 401, 403].includes(status)
+          ? "authorization_required"
+          : "error",
+        message: [400, 401, 403].includes(status)
+          ? "配额授权刷新失败，请重新授权读取配额。"
+          : "配额查询失败：网络异常、超时或官方未返回有效额度窗口。",
+      };
+    } finally {
+      this.mutating = false;
+      this.quotaReading = false;
+    }
+    return this.setQuota(key, result);
+  }
+  setQuota(key, result) {
+    const value = { ...result, checkedAt: new Date().toISOString() };
+    this.quotas.set(key, value);
+    return value;
+  }
+  closeQuotaCallback() {
+    clearTimeout(this.quotaLoginTimer);
+    this.quotaCallback?.close();
+    this.quotaCallback = null;
+  }
+  async startQuotaLogin(key, returnBase) {
+    this.idle();
+    const a = this.vault.accounts[key];
+    if (!a?.email) fail("账号缺少身份信息，请先重新登录会员账号");
+    const base = new URL(returnBase);
+    if (
+      base.protocol !== "http:" ||
+      base.hostname !== "127.0.0.1" ||
+      base.origin !== returnBase
+    )
+      fail("回调来源无效");
+    this.mutating = true;
+    try {
+      const pending = beginQuotaLogin(key);
+      this.quotaCallback = await this.quotaListener(async (query) => {
+        try {
+          await this.finishLogin(query);
+        } catch (e) {
+          this.lastError = {
+            code: "quota_authorization_failed",
+            message: e.message.includes("账号")
+              ? e.message
+              : "配额授权未通过验证，请取消后重新授权。",
+          };
+          throw e;
+        }
+      }, returnBase).catch(() =>
+        fail(
+          "配额登录需要本机 1455 端口；端口被占用或不可用，请结束其他登录流程后再试。",
+          "callback_unavailable",
+          409,
+        ),
+      );
+      this.pending = pending;
+      this.lastError = null;
+      this.quotaLoginTimer = setTimeout(() => {
+        if (this.pending === pending) {
+          this.pending = null;
+          this.closeQuotaCallback();
+          this.lastError = {
+            code: "login_expired",
+            message: "配额授权已过期，请重新开始。",
+          };
+        }
+      }, 600000);
+      this.quotaLoginTimer.unref();
+      return pending.url;
+    } finally {
+      this.mutating = false;
+    }
+  }
+  async finishQuotaLogin(query) {
+    const pending = this.pending;
+    const { code } = acceptCallback(pending, query);
+    const target = this.vault.accounts[pending.quotaAccountKey];
+    if (!target) fail("目标账号已不存在");
+    const tokens = await this.json(CODEX_TOKEN, {
+      method: "POST",
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: CODEX_CLIENT,
+        code,
+        code_verifier: pending.verifier,
+        redirect_uri: pending.redirectUri,
+      }),
+    });
+    this.validateTokens(tokens);
+    if (typeof tokens.refresh_token !== "string" || !tokens.refresh_token)
+      fail("配额授权未返回刷新凭据");
+    const jwks = await this.json(
+      "https://auth.openai.com/.well-known/jwks.json",
+    );
+    const identity = validateIdToken(tokens.id_token, {
+      jwks,
+      clientId: CODEX_CLIENT,
+      nonce: pending.nonce,
+      expectedSubject: target.quotaAuth?.subject,
+    });
+    // The two OAuth clients may issue pairwise subjects. Match verified email,
+    // then pin the native subject/account ID on subsequent authorizations.
+    const original = JSON.parse(
+      Buffer.from(target.id_token.split(".")[1], "base64url").toString(),
+    );
+    if (
+      original.email_verified !== true ||
+      identity.email_verified !== true ||
+      typeof identity.email !== "string" ||
+      identity.email.toLowerCase() !== target.email.toLowerCase()
+    )
+      fail("登录的 ChatGPT 账号与目标会员账号不一致，请使用同一账号重新授权。");
+    const accountId =
+      identity["https://api.openai.com/auth"]?.chatgpt_account_id;
+    if (
+      typeof accountId !== "string" ||
+      !accountId ||
+      accountId.length > 200 ||
+      /[\s\x00-\x1f]/.test(accountId) ||
+      (target.quotaAuth?.accountId && target.quotaAuth.accountId !== accountId)
+    )
+      fail("配额账号标识缺失或已变化，请检查登录账号。");
+    const next = structuredClone(this.vault);
+    next.accounts[pending.quotaAccountKey].quotaAuth = {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expiresAt: Date.now() + tokens.expires_in * 1000,
+      subject: identity.sub,
+      accountId,
     };
-    this.quotas.set(key, result);
-    return result;
+    await saveVault(this.vaultPath, next);
+    this.vault = next;
+    this.quotas.delete(pending.quotaAccountKey);
+    this.pending = null;
+    this.lastError = null;
+    this.closeQuotaCallback();
   }
   settings() {
     const result = {

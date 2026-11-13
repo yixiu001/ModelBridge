@@ -92,6 +92,11 @@ test('registration persists validated grant; refresh serializes; catalog and pro
     assert.equal(restored.status().models[0].checks.text.status, 'passed');
     assert.equal(restored.status().models[0].checks.tools.status, 'unverified');
     assert.equal((await readdir(dir)).some(x => x.endsWith('.dpapi')), true);
+    restored.account.quotaAuth = { access_token:'quota-existing',accountId:'quota-account' };
+    const reauth = new URL(restored.startLogin('http://127.0.0.1:1455/auth/callback'));
+    pending = { nonce: reauth.searchParams.get('nonce') };
+    await restored.finishLogin(new URLSearchParams({state:reauth.searchParams.get('state'),code:'reauth-code'}));
+    assert.equal(restored.account.quotaAuth?.access_token,'quota-existing');
   } finally {
     assert.ok(resolve(dir).startsWith(resolve(tmpdir())+ '\\'));
     await rm(dir, { recursive: true });

@@ -231,6 +231,13 @@ export function createApp({ service, controlKey, gatewayKey }) {
         return json(200, await service.accountAction(data.key, data.action));
       if (url.pathname === "/api/accounts/quota" && service.quota)
         return json(200, await service.quota(data.key));
+      if (
+        url.pathname === "/api/accounts/quota/login" &&
+        service.startQuotaLogin
+      )
+        return json(200, {
+          url: await service.startQuotaLogin(data.key, base),
+        });
       if (url.pathname === "/api/accounts/batch" && service.accountsBatch)
         return json(200, await service.accountsBatch(data.keys, data.action));
       if (url.pathname === "/api/accounts/update" && service.updateAccount)
