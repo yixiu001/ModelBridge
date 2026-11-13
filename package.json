@@ -1,0 +1,9 @@
+{
+  "name": "model-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "模型桥 ModelBridge — local ChatGPT plan integration verification",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": { "start": "node --use-env-proxy src/server.mjs", "test": "node --test", "status": "node scripts/control.mjs status" }
+}

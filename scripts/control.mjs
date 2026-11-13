@@ -1,0 +1,10 @@
+import { readFile } from 'node:fs/promises';
+const config = JSON.parse(await readFile(new URL('../.local/control.json', import.meta.url), 'utf8'));
+const command = process.argv[2] || 'status';
+const route = { status: 'status', refresh: 'models/refresh', verify: 'verify', cancel: 'cancel' }[command];
+if (!route) throw new Error('Use status | refresh | verify <exact-model> <text|tools> | cancel');
+const response = await fetch(`${config.base}/api/${route}`, { method: command === 'status' ? 'GET' : 'POST', headers: { Authorization: `Bearer ${config.key}`, 'Content-Type': 'application/json' }, body: command === 'status' ? undefined : JSON.stringify({ model: process.argv[3], kind: process.argv[4] }), signal: AbortSignal.timeout(150_000) });
+const result = await response.json();
+if (Array.isArray(result.models)) result.models = result.models.map(({declared,...model}) => ({...model,capabilities:declared}));
+console.log(JSON.stringify(result, null, 2));
+if (!response.ok || result.status === 'failed') process.exitCode = 1;
