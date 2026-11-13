@@ -1,5 +1,7 @@
 # 独立网关与管理界面完善范围
 
+> 本文记录0.3.0独立网关改造范围，保留为历史实施依据。后续功能完善以[完整调查报告](cliproxyapi-investigation-2026-11-14.md)和[整体修改方案](superpowers/plans/2026-11-14-modelbridge-console-upgrade.md)为准；新方案尚未实施。
+
 2026-11-14，用户最新授权覆盖早期「复用底层服务」方案。仅 Codex OAuth；React + Ant Design；只选择性移植必要代码，不依赖 CLIProxyAPI 服务、程序或整体软件包，不接 API 供应商和插件。
 
 ## 实施
