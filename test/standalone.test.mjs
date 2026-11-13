@@ -117,8 +117,8 @@ test("settings persist, reject stale writes, and guard active requests", async (
   await s.updateSettings({ ...old, timeoutSeconds: 60 });
   assert.equal(s.timeoutSeconds, 60);
   assert.equal(
-    JSON.parse(await readFile(join(dir, "direct-preferences.json"), "utf8"))
-      .timeoutSeconds,
+    JSON.parse(await readFile(join(dir, "settings.json"), "utf8"))
+      .values.timeoutSeconds,
     60,
   );
   await assert.rejects(

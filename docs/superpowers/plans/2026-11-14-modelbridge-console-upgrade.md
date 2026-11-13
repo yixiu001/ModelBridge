@@ -1,6 +1,6 @@
 # ModelBridge 管理流程整体改造 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 本文仅为方案；尚未开始实施，不因此自动派发其他聊天或子代理。
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 用户已授权实施；按任务持续记录进度，不因此自动派发其他聊天或子代理。
 
 **Goal:** 在保留独立 Codex OAuth 网关的基础上，一次性完成八页管理界面的账号恢复、配额、模型同步、配置、诊断与验收流程。
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node.js >=24、ES modules、node:test、React 19.3.1、Ant Design 6.7.0、Vite 8.3.8、Windows DPAPI。首轮不新增运行框架；新依赖必须先通过现有版本兼容检查。
 
-**Spec:** [CLIProxyAPI 功能调查与差距报告](../../cliproxyapi-investigation-2026-11-14.md)。基线 ModelBridge 0.3.1 / `618b840`。本方案日期2026-11-14，状态：**待评审，全部任务未实施**。
+**Spec:** [CLIProxyAPI 功能调查与差距报告](../../cliproxyapi-investigation-2026-11-14.md)。基线 ModelBridge 0.3.1 / `618b840`。本方案日期2026-11-14，状态：**实施中，T1已完成，T2进行中**。
 
 ## Global Constraints
 
@@ -77,10 +77,10 @@
 
 **Interfaces:** `loadSettings(dataDir):Promise<ConfigSnapshot>`；`previewSettings(current,values):{changes,errors}`；`saveSettings(dataDir,{revision,values}):Promise<ConfigSnapshot>`；`exportSettings(snapshot):{schemaVersion,values}`；`restoreSettings(dataDir,{revision,document}):Promise<ConfigSnapshot>`。HTTP新增`settings/preview`、`settings/export`、`settings/restore`；保留已有read/save入口并迁移调用者。
 
-- [ ] 写离线测试：`stale_revision_keeps_current_and_draft`断言旧revision保存返回409且磁盘字节不变；`legacy_migration_preserves_values`断言原超时、日志开关、模型规则全部保留；`backup_has_no_secrets`递归断言无access_token/refresh_token/gatewayKey；`failed_write_keeps_last_valid`断言模拟rename失败后旧配置仍可读。
-- [ ] 执行`node --test test/settings-store.test.mjs`，确认新增契约尚未实现而失败。
-- [ ] 实现版本化单文件保存与旧配置一次性读取迁移；首次成功写入前保留旧文件备份，不覆盖DPAPI凭据；未知字段和非法规则拒绝整个提交。只接受项目自己的备份格式，拒绝CPA配置与任意路径。
-- [ ] 执行配置测试与`npm test`；通过后提交`feat: unify console settings and safe migration`。
+- [x] 写离线测试：`stale_revision_keeps_current_and_draft`断言旧revision保存返回409且磁盘字节不变；`legacy_migration_preserves_values`断言原超时、日志开关、模型规则全部保留；`backup_has_no_secrets`递归断言无access_token/refresh_token/gatewayKey；`failed_write_keeps_last_valid`断言模拟rename失败后旧配置仍可读。
+- [x] 执行`node --test test/settings-store.test.mjs`，确认新增契约尚未实现而失败。
+- [x] 实现版本化单文件保存与旧配置一次性读取迁移；首次成功写入前保留旧文件备份，不覆盖DPAPI凭据；未知字段和非法规则拒绝整个提交。只接受项目自己的备份格式，拒绝CPA配置与任意路径。
+- [x] 执行配置测试与`npm test`；通过后提交`feat: unify console settings and safe migration`。
 
 **验收：** 两个标签页同时修改时，后保存者能看到冲突且草稿仍在；导入先预览，失败没有半份配置。
 
@@ -226,4 +226,4 @@
 - 新配置迁移前保存旧本项目配置，凭据结构采取增量字段，不删除原授权；恢复旧代码前先检查vault格式兼容。不可直接用旧二进制覆盖新数据来冒充回退成功。
 - 最终报告必须同时列已完成、未验证和不在本轮范围，不把“自动测试通过”当作所有真实账号/套餐都验证过。
 
-本轮只交付调查与方案。下一次实施从T1开始，顺序推进并维护本文件的任务状态，不再按临时出现的页面按钮零散扩展范围。
+本轮已获整体实施授权。从T1开始，顺序推进并维护本文件的任务状态，不再按临时出现的页面按钮零散扩展范围。

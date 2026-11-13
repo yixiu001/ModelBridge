@@ -254,6 +254,14 @@ export function createApp({ service, controlKey, gatewayKey }) {
         return json(200, await service.saveModelRules(data));
       if (url.pathname === "/api/logs/engine" && service.engineLogs)
         return json(200, await service.engineLogs());
+      if (url.pathname === "/api/settings/document" && service.settingsDocument)
+        return json(200, service.settingsDocument());
+      if (url.pathname === "/api/settings/preview" && service.previewSettings)
+        return json(200, service.previewSettings(data));
+      if (url.pathname === "/api/settings/export" && service.exportSettings)
+        return json(200, service.exportSettings());
+      if (url.pathname === "/api/settings/restore" && service.restoreSettings)
+        return json(200, await service.restoreSettings(data));
       if (url.pathname === "/api/settings/read" && service.settings)
         return json(200, await service.settings());
       if (url.pathname === "/api/settings/save" && service.updateSettings)

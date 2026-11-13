@@ -23,6 +23,7 @@ import {
 } from "./protocol.mjs";
 import { runProbe } from "./probe-jobs.mjs";
 import { parseCodexQuota } from "./vendor/codex-quota.mjs";
+import { DEFAULT_SETTINGS, loadSettings, saveSettings, settingsSnapshot, previewSettings, exportSettings, restoreSettings } from "./settings-store.mjs";
 const hash = (v) =>
   createHash("sha256").update(JSON.stringify(v)).digest("hex");
 const fail = (message, code = "invalid_input", httpStatus = 400) => {
@@ -39,12 +40,7 @@ export class StandaloneService extends BridgeService {
     this.quotas = new Map();
     this.quotaListener = options.quotaListener || listenQuotaCallback;
     this.upstreamModels = [];
-    this.prefs = {
-      timeoutSeconds: 180,
-      loggingToFile: true,
-      excluded: [],
-      aliases: [],
-    };
+    this.prefs = structuredClone(DEFAULT_SETTINGS);
     this.writeQueue = Promise.resolve();
     this.reportFile = "direct-reports.json";
   }
@@ -70,10 +66,7 @@ export class StandaloneService extends BridgeService {
   }
   async init() {
     await super.init();
-    this.prefs = {
-      ...this.prefs,
-      ...(await this.read("direct-preferences.json", {})),
-    };
+    this.prefs = (await loadSettings(this.dataDir)).values;
     this.timeoutSeconds = this.prefs.timeoutSeconds;
     this.traffic = await this.read("direct-traffic.json", []);
     await this.loadReports();
@@ -593,41 +586,31 @@ export class StandaloneService extends BridgeService {
     this.lastError = null;
     this.closeQuotaCallback();
   }
-  settings() {
-    const result = {
-      timeoutSeconds: this.prefs.timeoutSeconds,
-      loggingToFile: this.prefs.loggingToFile,
-    };
-    return { ...result, revision: hash(result) };
+  settingsDocument() { return settingsSnapshot(this.prefs); }
+  settings() { return { ...this.prefs, revision: this.settingsDocument().revision }; }
+  previewSettings(data) { return previewSettings(this.settingsDocument(), data.values); }
+  exportSettings() { return exportSettings(this.settingsDocument()); }
+  async restoreSettings(data) {
+    this.idle(); this.mutating = true;
+    try {
+      const snapshot = await restoreSettings(this.dataDir, data);
+      this.prefs = snapshot.values; this.timeoutSeconds = this.prefs.timeoutSeconds;
+      this.applyRules(); await this.loadReports(); return snapshot;
+    } finally { this.mutating = false; }
   }
   async updateSettings(data) {
     this.idle();
-    if (data.revision !== this.settings().revision)
-      fail("设置已变化，请重新读取", "stale_config", 409);
-    if (
-      Object.keys(data).some(
-        (k) => !["revision", "timeoutSeconds", "loggingToFile"].includes(k),
-      ) ||
-      !Number.isInteger(data.timeoutSeconds) ||
-      data.timeoutSeconds < 30 ||
-      data.timeoutSeconds > 600 ||
-      typeof data.loggingToFile !== "boolean"
-    )
-      fail("设置格式无效");
+    if (data.revision !== this.settingsDocument().revision)
+      fail("设置已变化，请保留草稿并重新比较", "stale_config", 409);
+    const {revision, values, ...fields} = data;
+    const prefs = values ?? {...this.prefs, ...fields};
     this.mutating = true;
     try {
-      const prefs = {
-        ...this.prefs,
-        timeoutSeconds: data.timeoutSeconds,
-        loggingToFile: data.loggingToFile,
-      };
-      await this.save("direct-preferences.json", prefs);
-      this.prefs = prefs;
-      this.timeoutSeconds = prefs.timeoutSeconds;
+      const snapshot = await saveSettings(this.dataDir, {revision, values:prefs});
+      this.prefs = snapshot.values; this.timeoutSeconds = this.prefs.timeoutSeconds;
+      this.applyRules(); await this.loadReports();
       return this.settings();
-    } finally {
-      this.mutating = false;
-    }
+    } finally { this.mutating = false; }
   }
   modelRules() {
     const r = { excluded: this.prefs.excluded, aliases: this.prefs.aliases };
@@ -674,7 +657,7 @@ export class StandaloneService extends BridgeService {
         ...this.prefs,
         [data.kind]: structuredClone(data.values),
       };
-      await this.save("direct-preferences.json", prefs);
+      await saveSettings(this.dataDir, {revision:this.settingsDocument().revision,values:prefs});
       this.prefs = prefs;
       this.applyRules();
       await this.loadReports();
