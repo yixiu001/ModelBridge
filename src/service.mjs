@@ -20,7 +20,8 @@ import {
   httpFailure,
 } from "./protocol.mjs";
 import { DirectAdapter as ChatAdapter } from "./direct-adapter.mjs";
-import { prepareCompatibility } from "./compatibility.mjs";
+import { prepareRequest } from "./request-contract.mjs";
+import { classifyFailure } from "./diagnostics.mjs";
 
 export function safeError(error) {
   if (error.name === "AbortError")
@@ -411,7 +412,7 @@ export class BridgeService {
   cancel() {
     this.job?.controller.abort();
   }
-  async chat(body, { signal, onChunk, compatibility = "strict" } = {}) {
+  async chat(body, { signal, onChunk, compatibility = "strict", requestContext } = {}) {
     if (
       !body ||
       typeof body !== "object" ||
@@ -429,6 +430,10 @@ export class BridgeService {
     this.gatewayActive++;
     const startedAt = new Date().toISOString();
     const trace = {
+      ...requestContext,
+      id: requestContext?.id || randomUUID(),
+      accountKey: requestContext?.accountKey ?? this.vault.active,
+      credentialRevision: requestContext?.credentialRevision ?? this.account?.credentialRevision ?? 1,
       startedAt,
       model: typeof body.model === "string" ? body.model.slice(0, 256) : null,
       fields: Object.keys(body),
@@ -445,11 +450,7 @@ export class BridgeService {
     };
     try {
       if (!this.models.length) await this.refreshCatalog();
-      const prepared = prepareCompatibility(
-        body,
-        this.upstreamModels || this.models,
-        compatibility,
-      );
+      const prepared = prepareRequest({protocol:"chat",body,catalog:this.upstreamModels || this.models,profile:compatibility});
       trace.compatibility = compatibility;
       trace.adjustments = prepared.adjustments;
       const token = await this.accessToken();
@@ -504,12 +505,14 @@ export class BridgeService {
       for (const chunk of probeChunks) emit(chunk);
       if (compatibility !== "strict") result.modelbridge = details;
       trace.status = "completed";
+      trace.usage = result.usage;
       trace.finishReason = result.choices[0].finish_reason;
       trace.returnedToolNames =
         result.choices[0].message.tool_calls?.map((t) => t.function.name) || [];
       return result;
     } catch (error) {
       trace.status = "failed";
+      error.details = classifyFailure(error, {requestId:trace.id,stage:error.details?.source==='client'?'validate':'connect'});
       trace.error = safeError(error);
       error.modelbridgeRecorded = true;
       throw error;

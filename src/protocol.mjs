@@ -70,6 +70,7 @@ export async function httpFailure(response) {
   const error = new Error(`HTTP ${response.status}: ${code}`);
   error.details = {
     httpStatus: response.status,
+    source: "upstream",
     code,
     param: safeCode(data?.error?.param),
     requestId: safeCode(response.headers.get("x-request-id")),
@@ -82,7 +83,7 @@ export async function readResponseStream(response, options = {}) {
     return await parseResponseStream(response, options);
   } catch (error) {
     if (!["AbortError", "TimeoutError"].includes(error.name))
-      error.details = { httpStatus: 502, ...error.details };
+      error.details = { httpStatus: 502, source:"upstream", ...error.details };
     throw error;
   }
 }
@@ -152,7 +153,7 @@ async function parseResponseStream(response, { signal, onEvent } = {}) {
     if (e.type === "response.output_text.delta") stats.textDeltas++;
     if (e.type === "response.failed" || e.type === "error") {
       const code =
-        safeCode(e.response?.error?.code || e.code) || "response.failed";
+        safeCode(e.response?.error?.code || e.response?.error?.type || e.error?.code || e.error?.type || e.code) || "response.failed";
       const error = new Error(code);
       error.details = {
         code,

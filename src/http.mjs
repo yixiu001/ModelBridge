@@ -1,10 +1,11 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { secureEqual } from "./auth.mjs";
 import { safeError } from "./service.mjs";
 import { configureWorkBuddy } from "./client-config.mjs";
 
+import { classifyFailure } from "./diagnostics.mjs";
 const web = new URL("../dist/", import.meta.url);
 export function createApp({ service, controlKey, gatewayKey }) {
   const session = randomBytes(32).toString("base64url");
@@ -108,7 +109,12 @@ export function createApp({ service, controlKey, gatewayKey }) {
           chunks.push(chunk);
         }
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        const requestContext = {id:randomUUID(),accountKey:service.vault?.active,credentialRevision:service.account?.credentialRevision ?? 1};
+        res.setHeader("X-ModelBridge-Request-Id",requestContext.id);
         const controller = new AbortController();
+        let heartbeat;
+        const stopHeartbeat=()=>clearInterval(heartbeat);
+        res.once("close",stopHeartbeat);res.once("finish",stopHeartbeat);
         res.on("close", () => {
           if (!res.writableEnded) controller.abort();
         });
@@ -121,6 +127,8 @@ export function createApp({ service, controlKey, gatewayKey }) {
               Connection: "keep-alive",
             });
             streamStarted = true;
+            const seconds=service.prefs?.heartbeatSeconds;
+            if(seconds>=5) { heartbeat=setInterval(()=>{if(!res.destroyed&&!res.writableEnded)res.write(": heartbeat\n\n");},seconds*1000);heartbeat.unref(); }
           }
           res.write(`data: ${JSON.stringify(chunk)}\n\n`);
         };
@@ -129,10 +137,12 @@ export function createApp({ service, controlKey, gatewayKey }) {
             apiPath === "/v1/responses"
               ? await service.responses(body, {
                   signal: controller.signal,
+                  requestContext,
                   onEvent: body.stream ? write : undefined,
                 })
               : await service.chat(body, {
                   signal: controller.signal,
+                  requestContext,
                   onChunk: body.stream ? write : undefined,
                   compatibility: workbuddy ? "workbuddy" : "strict",
                 });
@@ -141,11 +151,13 @@ export function createApp({ service, controlKey, gatewayKey }) {
             res.end("data: [DONE]\n\n");
           } else json(200, result);
         } catch (error) {
-          await service.recordRejected?.(error, body, apiPath);
+          if(!error.details?.category)error.details=classifyFailure(error,{requestId:requestContext.id,stage:"validate"});
+          await service.recordRejected?.(error, body, apiPath, requestContext);
           const safe = safeError(error);
           service.lastError = safe;
           const envelope = {
             error: {
+              ...safe,
               message: safe.message,
               type: "modelbridge_error",
               code: safe.code || "request_failed",

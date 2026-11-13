@@ -24,6 +24,8 @@ import {
 import { runProbe } from "./probe-jobs.mjs";
 import { parseCodexQuota } from "./vendor/codex-quota.mjs";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, settingsSnapshot, previewSettings, exportSettings, restoreSettings } from "./settings-store.mjs";
+import { prepareRequest } from "./request-contract.mjs";
+import { classifyFailure, normalizedUsage } from "./diagnostics.mjs";
 const hash = (v) =>
   createHash("sha256").update(JSON.stringify(v)).digest("hex");
 const fail = (message, code = "invalid_input", httpStatus = 400) => {
@@ -677,13 +679,14 @@ export class StandaloneService extends BridgeService {
       unavailable: false,
     };
   }
-  async recordRejected(error, body, path) {
+  async recordRejected(error, body, path, requestContext) {
     if (error.modelbridgeRecorded) return;
     const now = new Date().toISOString();
     await this.recordTrace(
       {
         model:
           typeof body?.model === "string" ? body.model.slice(0, 256) : null,
+        ...requestContext,
         path,
         startedAt: now,
         finishedAt: now,
@@ -696,8 +699,15 @@ export class StandaloneService extends BridgeService {
   }
   async recordTrace(trace, body) {
     const entry = {
-      id: randomUUID(),
-      account: this.vault.active,
+      id: trace.id || randomUUID(),
+      account: trace.accountKey ?? this.vault.active,
+      accountKey: trace.accountKey ?? this.vault.active,
+      credentialRevision: trace.credentialRevision ?? this.account?.credentialRevision ?? 1,
+      requestedModel: trace.requestedModel || trace.model,
+      effectiveModel: trace.model,
+      profile: trace.compatibility || "strict",
+      usage: normalizedUsage(trace.usage),
+      failure: trace.error,
       path: trace.path || "/v1/chat/completions",
       model: trace.model,
       startedAt: trace.startedAt,
@@ -741,6 +751,7 @@ export class StandaloneService extends BridgeService {
       { ...body, model: selected.upstreamModel || alias },
       {
         ...options,
+        requestContext: {...options.requestContext, requestedModel:alias},
         onChunk: options.onChunk
           ? (c) => options.onChunk({ ...c, model: alias })
           : undefined,
@@ -749,7 +760,7 @@ export class StandaloneService extends BridgeService {
     result.model = alias;
     return result;
   }
-  async responses(body, { signal, onEvent } = {}) {
+  async responses(body, { signal, onEvent, requestContext } = {}) {
     if (
       !body ||
       typeof body !== "object" ||
@@ -763,8 +774,13 @@ export class StandaloneService extends BridgeService {
       );
     if (this.mutating || this.pending) fail("管理操作进行中", "busy", 409);
     if (!this.models.length) await this.refreshCatalog();
-    const selected = requireModel(this.models, body.model);
+    const prepared = prepareRequest({protocol:"responses",body,catalog:this.models});
+    const selected = prepared.model;
     const trace = {
+      ...requestContext,
+      id: requestContext?.id || randomUUID(),
+      accountKey: requestContext?.accountKey ?? this.vault.active,
+      credentialRevision: requestContext?.credentialRevision ?? this.account?.credentialRevision ?? 1,
       model: body.model,
       path: "/v1/responses",
       startedAt: new Date().toISOString(),
@@ -807,9 +823,11 @@ export class StandaloneService extends BridgeService {
         },
       );
       trace.status = "completed";
+      trace.usage = response.usage;
       return { ...response, model: body.model };
     } catch (e) {
       trace.status = "failed";
+      e.details = classifyFailure(e,{requestId:trace.id,stage:"stream"});
       trace.error = safeError(e);
       e.modelbridgeRecorded = true;
       throw e;

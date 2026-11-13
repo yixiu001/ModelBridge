@@ -10,6 +10,8 @@ OAuth reference: https://github.com/router-for-me/CLIProxyAPI/blob/v8.0.69/inter
 
 The management navigation and workflows were reviewed against the official Management Center at `3d893ec88938c3ceef200a15be6af8cf972564b3`. Other providers and plugin implementations are not included.
 
+The capability checks in `src/request-contract.mjs` and regression cases in `test/request-contract.test.mjs` selectively re-express the native Responses effort validation cases from `internal/thinking/configuration_update.go` and `internal/thinking/apply_responses_effort_test.go` at `1aaf56bc6a0fc6fce19049ba7ae8554c882304a6`. Unlike upstream automatic lowering, strict ModelBridge requests reject unsupported effort; only the previously authorized WorkBuddy title helper maps none to low. No Go executor or cache is imported.
+
 ### CLIProxyAPI license (verbatim)
 
 MIT License

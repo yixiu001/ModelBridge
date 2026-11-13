@@ -10,6 +10,19 @@ const model = {
   selectable: true,
   declared: { supported_reasoning_levels: [{ effort: "low" }] },
 };
+test('Responses unsupported effort is rejected before upstream and tool streams are never retried', async t=>{
+ const {s,calls}=await setup(t);
+ await assert.rejects(()=>s.responses({model:'chosen',input:'hi',reasoning:{effort:'none'}}),e=>e.details?.param==='reasoning.effort');
+ assert.equal(calls.length,0);
+ let requests=0; s.fetcher=async()=>{requests++;return new Response('data: '+JSON.stringify({type:'response.output_item.added',output_index:0,item:{type:'function_call',id:'f',call_id:'c',name:'echo',arguments:''}})+'\n\n',{headers:{'Content-Type':'text/event-stream'}});};
+ const events=[]; await assert.rejects(()=>s.responses({model:'chosen',input:'hi'},{onEvent:e=>events.push(e)}));
+ assert.equal(requests,1);assert.equal(events.length,1);assert.equal(s.traffic.at(-1).status,'failed');
+});
+test('request identity and account snapshot survive completion and unknown usage stays unknown',async t=>{
+ const {s}=await setup(t);
+ await s.responses({model:'chosen',input:'hi'},{requestContext:{id:'req-fixture',accountKey:'a',credentialRevision:3}});
+ assert.equal(s.traffic.at(-1).id,'req-fixture');assert.equal(s.traffic.at(-1).account,'a');assert.equal(s.traffic.at(-1).usage.inputTokens,null);
+});
 async function setup(t) {
   const dir = await mkdtemp(join(tmpdir(), "modelbridge-independent-"));
   t.after(async () => {
