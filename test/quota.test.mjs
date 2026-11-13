@@ -98,7 +98,7 @@ test("quota classifies swapped monthly windows, camel case and additional limits
     [5, 20, null],
   );
   assert.equal(q.windows[1].id, "monthly");
-  assert.equal(q.windows[2].label, "Extra · 5 小时");
+  assert.equal(q.windows[2].label, "Extra · 未知周期");
 });
 test("quota failure clears stale availability, sanitizes upstream errors and does not retry 401", async () => {
   let count = 0;
@@ -115,7 +115,8 @@ test("quota failure clears stale availability, sanitizes upstream errors and doe
   assert.equal(q.status, "authorization_required");
   assert.equal(count, 2);
   assert.doesNotMatch(JSON.stringify(q), /QUOTA_SECRET|PRIVATE_ID/);
-  assert.equal(s.status().accounts[0].quota.windows, undefined);
+  assert.equal(s.status().accounts[0].quota.freshness, 'stale');
+  assert.equal(s.status().accounts[0].quota.previous.windows[0].usedPercent,12);
 });
 test("quota rejects malformed success payloads and invalid percentages", async () => {
   const s = setup(async () =>

@@ -43,15 +43,15 @@ export function parseCodexQuota(payload, now = Date.now()) {
   function add(info, prefix = "", name = "") {
     for (const [index, w] of classify(info).entries()) {
       if (!w) continue;
-      const kind =
-        index === 0 ? "five-hour" : monthly(w) ? "monthly" : "weekly";
+      const duration=seconds(w);
+      const kind = duration===18000?'five-hour':duration===604800?'weekly':monthly(w)?'monthly':duration>0?`hours-${duration/3600}`:`unknown-${index}`;
       const raw = number(w.used_percent ?? w.usedPercent);
       const usedPercent = raw !== null && raw >= 0 && raw <= 100 ? raw : null;
       windows.push({
         id: prefix + kind,
         label:
           name +
-          { "five-hour": "5 小时", weekly: "每周", monthly: "每月" }[kind],
+          ({ "five-hour": "5 小时", weekly: "每周", monthly: "每月" }[kind] || (duration>0?`${duration/3600} 小时`:"未知周期")),
         usedPercent,
         resetAtMs: reset(w, now),
         periodHours: seconds(w) > 0 ? seconds(w) / 3600 : null,
@@ -76,7 +76,8 @@ export function parseCodexQuota(payload, now = Date.now()) {
           : `附加额度 ${i + 1}`;
       add(v.rate_limit ?? v.rateLimit, `additional-${i}-`, name + " · ");
     });
-  if (!windows.some((w) => w.usedPercent !== null))
+  const hasKnownCredit=payload.credits?.unlimited===true || /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(String(payload.credits?.balance));
+  if (!windows.some(w=>w.usedPercent!==null||w.resetAtMs!==null||w.periodHours!==null) && !hasKnownCredit)
     throw new Error("quota windows unavailable");
   const plan = payload.plan_type ?? payload.planType;
   const balance = payload.credits?.balance;

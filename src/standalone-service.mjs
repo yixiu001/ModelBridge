@@ -28,6 +28,7 @@ import { DEFAULT_SETTINGS, loadSettings, saveSettings, settingsSnapshot, preview
 import { prepareRequest } from "./request-contract.mjs";
 import { classifyFailure, normalizedUsage } from "./diagnostics.mjs";
 import {projectAccountState} from "./account-state.mjs";
+import {QuotaJobs} from "./quota-jobs.mjs";
 const hash = (v) =>
   createHash("sha256").update(JSON.stringify(v)).digest("hex");
 const fail = (message, code = "invalid_input", httpStatus = 400) => {
@@ -42,6 +43,7 @@ export class StandaloneService extends BridgeService {
     this.timeoutSeconds = 180;
     this.traffic = [];
     this.quotas = new Map();
+    this.quotaJobs=new QuotaJobs({getAccount:key=>this.vault.accounts[key],query:(key,opts)=>this.quota(key,opts),persist:jobs=>this.save('quota-jobs.json',jobs)});
     this.quotaListener = options.quotaListener || listenQuotaCallback;
     this.upstreamModels = [];
     this.prefs = structuredClone(DEFAULT_SETTINGS);
@@ -73,6 +75,9 @@ export class StandaloneService extends BridgeService {
     this.prefs = (await loadSettings(this.dataDir)).values;
     this.timeoutSeconds = this.prefs.timeoutSeconds;
     this.traffic = await this.read("direct-traffic.json", []);
+    this.quotas=new Map(Object.entries(await this.read('quota-snapshots.json',{})));
+    this.quotaJobs.hydrate(await this.read('quota-jobs.json',[]));
+    this.initialized=true;
     await this.loadReports();
     if (this.account && !this.account.disabled)
       await this.refreshCatalog().catch((e) => {
@@ -131,9 +136,10 @@ export class StandaloneService extends BridgeService {
         policy:
           "ModelBridge 直接请求会员通道；指定模型不替换，失败不自动重试。",
       },
+      quotaJob: this.quotaJobs.read(),
       accounts: Object.entries(this.vault.accounts).map(([key, a]) => ({
         key,
-        health: projectAccountState(a,{accountKey:key,inferenceVerifiedAt:this.traffic.findLast(t=>t.account===key&&t.status==='forwarded'&&t.credentialRevision===(a.credentialRevision||1))?.finishedAt,quotaVerifiedAt:this.quotas.get(key)?.checkedAt}),
+        health: projectAccountState(a,{accountKey:key,inferenceVerifiedAt:this.traffic.findLast(t=>t.account===key&&t.status==='forwarded'&&t.credentialRevision===(a.credentialRevision||1))?.finishedAt,quotaVerifiedAt:this.quotas.get(key)?.status==='available'?this.quotas.get(key)?.checkedAt:this.quotas.get(key)?.previous?.checkedAt}),
         label: `账号 ${key.slice(0, 8)}`,
         active: key === this.vault.active,
         disabled: !!a.disabled,
@@ -148,7 +154,7 @@ export class StandaloneService extends BridgeService {
         failureCount: this.traffic.filter(
           (t) => t.account === key && t.status === "failed",
         ).length,
-        quota: this.quotas.get(key) || {
+        quota: this.quotaSnapshot(key) || {
           status: a.quotaAuth ? "unqueried" : "authorization_required",
           message: a.quotaAuth
             ? "尚未查询，请刷新配额"
@@ -401,7 +407,7 @@ export class StandaloneService extends BridgeService {
       })),
     };
   }
-  async quota(key) {
+  async quota(key, {signal,canCommit=()=>true}={}) {
     this.idle();
     const account = this.vault.accounts[key];
     if (!account) fail("账号不存在");
@@ -449,7 +455,7 @@ export class StandaloneService extends BridgeService {
             Accept: "application/json",
           },
           redirect: "error",
-          signal: AbortSignal.timeout(30000),
+          signal: signal?AbortSignal.any([signal,AbortSignal.timeout(30000)]):AbortSignal.timeout(30000),
         },
       );
       if (!response.ok) {
@@ -482,12 +488,21 @@ export class StandaloneService extends BridgeService {
       this.mutating = false;
       this.quotaReading = false;
     }
+    if(!canCommit()||signal?.aborted)throw Object.assign(new Error('配额查询已取消'),{name:'AbortError'});
     return this.setQuota(key, result);
   }
-  setQuota(key, result) {
-    const value = { ...result, checkedAt: new Date().toISOString() };
-    this.quotas.set(key, value);
-    return value;
+  quotaSnapshot(key){
+    const q=this.quotas.get(key), a=this.vault.accounts[key];
+    if(!q||!a||(q.credentialRevision && q.credentialRevision!==(a.credentialRevision||1))||(q.quotaRevision && q.quotaRevision!==(a.quotaAuth?.credentialRevision||1)))return null;
+    return {...q,freshness:q.status==='available'&&Date.now()<q.freshUntil?'current':q.status==='available'||q.previous?'stale':'unavailable'};
+  }
+  async setQuota(key, result) {
+    const previous=this.quotas.get(key), a=this.vault.accounts[key];
+    const value={...result,accountKey:key,credentialRevision:a?.credentialRevision||1,quotaRevision:a?.quotaAuth?.credentialRevision||1,checkedAt:new Date().toISOString(),freshUntil:Date.now()+300000};
+    if(result.status!=='available'&&previous){value.previous=previous.status==='available'?{windows:previous.windows,planType:previous.planType,creditBalance:previous.creditBalance,checkedAt:previous.checkedAt}:previous.previous;}
+    this.quotas.set(key,value);
+    if(this.initialized)await this.save('quota-snapshots.json',Object.fromEntries(this.quotas));
+    return this.quotaSnapshot(key);
   }
   closeQuotaCallback() {
     clearTimeout(this.quotaLoginTimer);
