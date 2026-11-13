@@ -7,4 +7,6 @@ export function watchParent() {
     return;
   }
   process.once("disconnect", () => process.exit(143));
+  // Listen while a probe is busy without keeping a completed probe alive.
+  process.channel?.unref();
 }

@@ -1,40 +1,6 @@
 import { request } from "node:http";
 import { Readable } from "node:stream";
 
-export function validateEngineConfig(value) {
-  if (!value || typeof value !== "object")
-    throw new Error("请填写本机引擎连接信息");
-  let url;
-  try {
-    url = new URL(value.baseUrl);
-  } catch {
-    throw new Error("引擎地址无效");
-  }
-  if (
-    url.protocol !== "http:" ||
-    !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
-    url.username ||
-    url.password ||
-    url.pathname !== "/" ||
-    url.search ||
-    url.hash
-  )
-    throw new Error("仅支持本机 HTTP 引擎地址，不接受路径或外部地址");
-  for (const key of ["apiKey", "managementKey"])
-    if (
-      typeof value[key] !== "string" ||
-      !value[key].trim() ||
-      value[key].length > 4096 ||
-      /[\r\n]/.test(value[key])
-    )
-      throw new Error("请填写有效的接口密钥和管理密钥");
-  return {
-    baseUrl: url.origin,
-    apiKey: value.apiKey.trim(),
-    managementKey: value.managementKey.trim(),
-  };
-}
-
 // Direct loopback HTTP: never send engine credentials through an environment proxy.
 export function localFetch(
   url,
@@ -65,9 +31,9 @@ export function localFetch(
   });
 }
 
-export function engineError(
+export function clientError(
   message,
-  code = "engine_unavailable",
+  code = "service_unavailable",
   httpStatus = 502,
 ) {
   return Object.assign(new Error(message), { details: { code, httpStatus } });
@@ -76,8 +42,8 @@ export function engineError(
 export async function readChat(response, { signal } = {}) {
   if (!response.ok) {
     await response.body?.cancel();
-    throw engineError(
-      `引擎返回 HTTP ${response.status}；请查看引擎状态或请求参数`,
+    throw clientError(
+      `服务返回 HTTP ${response.status}；请查看服务状态或请求参数`,
       "upstream_error",
       response.status,
     );
@@ -89,10 +55,10 @@ export async function readChat(response, { signal } = {}) {
     try {
       value = JSON.parse(text);
     } catch {
-      throw engineError("引擎响应格式不正确", "invalid_engine_response");
+      throw clientError("服务响应格式不正确", "invalid_engine_response");
     }
     if (value.error || !value.choices?.[0]?.finish_reason)
-      throw engineError("引擎响应未完整结束", "incomplete_stream");
+      throw clientError("服务响应未完整结束", "incomplete_stream");
     return value.choices[0].message;
   }
   const message = { role: "assistant", content: "" };
@@ -114,10 +80,10 @@ export async function readChat(response, { signal } = {}) {
     try {
       chunk = JSON.parse(data);
     } catch {
-      throw engineError("引擎流数据格式不正确", "invalid_engine_response");
+      throw clientError("服务流数据格式不正确", "invalid_engine_response");
     }
     if (chunk.error)
-      throw engineError("引擎在响应过程中报告失败", "upstream_stream_error");
+      throw clientError("服务在响应过程中报告失败", "upstream_stream_error");
     for (const choice of chunk.choices || []) {
       if (choice.finish_reason) finish = true;
       message.content += choice.delta?.content || "";
@@ -135,7 +101,7 @@ export async function readChat(response, { signal } = {}) {
     }
   }
   if (!done || !finish)
-    throw engineError("响应提前中断，未标记测试成功", "incomplete_stream");
+    throw clientError("响应提前中断，未标记测试成功", "incomplete_stream");
   if (calls.size)
     message.tool_calls = [...calls.entries()]
       .sort((a, b) => a[0] - b[0])

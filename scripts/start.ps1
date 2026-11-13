@@ -12,5 +12,5 @@ if (-not $existingAcl.AreAccessRulesProtected) {
 if (Test-Path -LiteralPath (Join-Path $dataPath 'runtime.lock')) { throw 'ModelBridge runtime lock exists. Check or stop the running instance first.' }
 $nodePath = (Get-Command node.exe).Source
 $entry = Join-Path $projectRoot 'src\server.mjs'
-$process = Start-Process -FilePath $nodePath -ArgumentList @(('"' + $entry + '"')) -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $dataPath 'server.out.log') -RedirectStandardError (Join-Path $dataPath 'server.err.log') -PassThru
+$process = Start-Process -FilePath $nodePath -ArgumentList @('--use-env-proxy', ('"' + $entry + '"')) -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $dataPath 'server.out.log') -RedirectStandardError (Join-Path $dataPath 'server.err.log') -PassThru
 Write-Output ('ModelBridge started, PID ' + $process.Id)

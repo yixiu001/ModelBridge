@@ -2,22 +2,22 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { engineError } from "./engine-client.mjs";
+import { clientError } from "./local-client.mjs";
 export async function runProbe(model, kind) {
   if (this.job || this.connecting || this.mutating || this.pending)
-    throw engineError("已有操作正在运行", "busy", 409);
+    throw clientError("已有操作正在运行", "busy", 409);
   if (
     !this.reachable ||
     !this.models.some((m) => m.slug === model && m.selectable) ||
     !["files", "mcp", "long"].includes(kind)
   )
-    throw engineError("请选择可用的文本模型与验证类型", "invalid_test", 400);
+    throw clientError("请选择可用的文本模型与验证类型", "invalid_test", 400);
   const controller = new AbortController(),
     context = this.context;
   const report = {
     model,
     kind,
-    engine: "CLIProxyAPI",
+    engine: "ModelBridge",
     status: "failed",
     startedAt: new Date().toISOString(),
   };
@@ -69,7 +69,7 @@ export async function runProbe(model, kind) {
         clearTimeout(timer);
         controller.signal.removeEventListener("abort", abort);
         if (code === 0 && last?.status === "passed") resolve();
-        else reject(engineError("验证未完成，请查看结果", "probe_failed"));
+        else reject(clientError("验证未完成，请查看结果", "probe_failed"));
       });
     });
     Object.assign(report, {
@@ -101,7 +101,7 @@ export async function runProbe(model, kind) {
         this.reports = this.reports.slice(-100);
         this.saved = { context, reports: this.reports };
         await writeFile(
-          join(this.dataDir, "engine-reports.json"),
+          join(this.dataDir, this.reportFile || "direct-reports.json"),
           JSON.stringify(this.saved, null, 2),
         );
       }

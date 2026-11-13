@@ -1,5 +1,7 @@
 # CLIProxyAPI 底层迁移设计与执行记录
 
+> 历史记录：后续用户要求独立实现，此方案已由 console-parity-plan.md 和 current-state.md 替代。
+
 2026-11-14。用户已明确选择直接复用 CLIProxyAPI、保留 ModelBridge 管理界面、参考其 UI，并授权实现及提交推送。本轮在唯一源码入口原地完成，保留先前工作区中的测试与修复；不另派实现聊天。
 
 ## 设计

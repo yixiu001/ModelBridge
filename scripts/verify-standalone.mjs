@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { localFetch } from "../src/engine-client.mjs";
+import { localFetch } from "../src/local-client.mjs";
 const local = new URL("../.local/", import.meta.url),
   control = JSON.parse(await readFile(new URL("control.json", local), "utf8"));
 async function call(path, data) {
@@ -22,10 +22,10 @@ const models = state.models
   .sort();
 const report = {
   startedAt: new Date().toISOString(),
-  engineVersion: state.engine.version,
+  implementation: state.engine.mode, version: state.engine.version,
   results: [],
 };
-const path = new URL("engine-acceptance.json", local);
+const path = new URL("direct-acceptance.json", local);
 for (const model of models) {
   for (const kind of ["tools", "files", "mcp"]) {
     const result = await call("verify", { model, kind });

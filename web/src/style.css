@@ -304,3 +304,7 @@ body {
     flex-wrap: wrap;
   }
 }
+
+.config-preview,.log-content {white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;padding:16px;background:rgba(128,128,128,.08);border-radius:8px;}
+
+.ant-table-thead th {white-space:nowrap;}

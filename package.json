@@ -1,14 +1,14 @@
 {
   "name": "model-bridge",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "ModelBridge — Codex OAuth console powered by CLIProxyAPI",
+  "description": "ModelBridge — standalone Codex OAuth gateway and management console",
   "engines": {
     "node": ">=24.0.0"
   },
   "scripts": {
-    "start": "node src/server.mjs",
+    "start": "node --use-env-proxy src/server.mjs",
     "build": "vite build",
     "dev": "vite --host 127.0.0.1",
     "test": "node --test test/*.test.mjs",

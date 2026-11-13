@@ -1,12 +1,13 @@
 import { readFile, writeFile, rename, unlink } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { buildWorkBuddyModel } from "./workbuddy-config.mjs";
 import { saveVault } from "./vault.mjs";
 
 export function mergeWorkBuddyModels(
   existing,
   models,
-  { url, key, engineUrl },
+  { url, key, engineUrl, archiveUnavailable = false },
 ) {
   if (!Array.isArray(existing)) throw new Error("WorkBuddy 配置格式无法识别");
   const selected = models.filter(
@@ -15,10 +16,22 @@ export function mergeWorkBuddyModels(
   if (!selected.length) throw new Error("请先完成至少一个模型的工具验证");
   const allowed = [
     url,
-    url.replace("/v1/", "/workbuddy/v1/"),
+    url.includes("/workbuddy/")
+      ? url.replace("/workbuddy/v1/", "/v1/")
+      : url.replace("/v1/", "/workbuddy/v1/"),
     engineUrl + "/v1/chat/completions",
   ];
-  const result = [...existing];
+  // Only retire our own generated entries on this gateway. The complete prior
+  // file is encrypted and backed up before any change is written below.
+  const result = existing.filter(
+    (x) =>
+      !(
+        archiveUnavailable &&
+        /^ModelBridge · /.test(x.name || "") &&
+        allowed.slice(0, 2).includes(x.url) &&
+        !models.some((m) => m.slug === x.id && m.selectable)
+      ),
+  );
   for (const m of selected) {
     const index = result.findIndex((x) => x.id === m.slug),
       old = result[index];
@@ -29,13 +42,7 @@ export function mergeWorkBuddyModels(
     )
       throw new Error("存在同名的其他模型配置，未修改 WorkBuddy");
     const item = {
-      ...(old || {
-        vendor: "custom",
-        supportsToolCall: true,
-        supportsImages: false,
-        supportsReasoning: false,
-        useCustomProtocol: true,
-      }),
+      ...(old || buildWorkBuddyModel(m, { url, key })),
       id: m.slug,
       name: "ModelBridge · " + m.displayName,
       url,
@@ -53,9 +60,10 @@ export async function configureWorkBuddy({ service, base, key }) {
     JSON.parse(original),
     service.status().models,
     {
-      url: base + "/v1/chat/completions",
+      url: base + (service.direct ? "/workbuddy" : "") + "/v1/chat/completions",
       key,
-      engineUrl: service.config.baseUrl,
+      engineUrl: service.config?.baseUrl,
+      archiveUnavailable: true,
     },
   );
   await saveVault(
@@ -74,8 +82,15 @@ export async function configureWorkBuddy({ service, base, key }) {
     });
   }
   return {
+    archived: JSON.parse(original)
+      .filter((x) => !result.some((r) => r.id === x.id))
+      .map((x) => x.id),
     configured: result
-      .filter((x) => x.url === base + "/v1/chat/completions")
+      .filter(
+        (x) =>
+          x.url ===
+          base + (service.direct ? "/workbuddy" : "") + "/v1/chat/completions",
+      )
       .map((x) => x.id),
     message: "已保存加密备份并更新配置；在 WorkBuddy 刷新窗口后生效。",
   };

@@ -1,26 +1,19 @@
 # Third-party software
 
-## CLIProxyAPI
+## Selective CLIProxyAPI adaptation
 
-ModelBridge connects to an independently installed CLIProxyAPI service. The engine binary and OAuth credentials are not distributed in this repository.
+ModelBridge does not install, launch, link, or call the CLIProxyAPI service. Only the message/function-call reconstruction and long call-ID mapping in `src/vendor/chat-history.mjs` are adapted from `internal/translator/codex/openai/chat-completions/codex_openai_request.go` at v8.0.69. The port uses JavaScript and the official membership API namespace format; malformed tool histories are rejected instead of silently discarded. OAuth, HTTP serving, response streaming, management, and the React/Ant Design UI are implemented within ModelBridge.
 
-- Project: https://github.com/router-for-me/CLIProxyAPI
-- Tested release: v8.0.69 (MIT)
-- Engine license: https://github.com/router-for-me/CLIProxyAPI/blob/v8.0.69/LICENSE
+Source: https://github.com/router-for-me/CLIProxyAPI/blob/v8.0.69/internal/translator/codex/openai/chat-completions/codex_openai_request.go
 
-## CLI Proxy API Management Center
+The management navigation and workflows were reviewed against the official Management Center at `3d893ec88938c3ceef200a15be6af8cf972564b3`. Its previously ported quota parser was removed because this authorization channel has no verified quota endpoint. Other providers and plugin implementations are not included.
 
-`src/vendor/codex-quota.ts` adapts `buildCodexQuotaWindows` from `src/features/quota/providers/codex/data.ts` and numeric/string normalization from `src/utils/quota/parsers.ts`. Window classification and fallback behavior are retained; browser translation/time helpers are replaced by local server helpers. Only Codex read-only quota logic is included, without credit spending, other providers, or plugins.
-
-Source: https://github.com/router-for-me/Cli-Proxy-API-Management-Center/tree/3d893ec88938c3ceef200a15be6af8cf972564b3
-
-The management workflow and fixed official quota endpoint also follow this project's OAuth/account/quota API implementations. ModelBridge's React/Ant Design interface is its own implementation using library components.
-
-### License
+### CLIProxyAPI license (verbatim)
 
 MIT License
 
-Copyright (c) 2026 Router-For.ME
+Copyright (c) 2025-2005.9 Luis Pater
+Copyright (c) 2025.9-present Router-For.ME
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -39,7 +32,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
 
 ## UI dependencies
 

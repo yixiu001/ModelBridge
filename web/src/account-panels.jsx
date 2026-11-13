@@ -1,0 +1,675 @@
+import React, { useState, useEffect, useRef } from "react";
+import {
+  App,
+  Alert,
+  Button,
+  Card,
+  Col,
+  Descriptions,
+  Drawer,
+  Empty,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Progress,
+  Row,
+  Segmented,
+  Select,
+  Space,
+  Statistic,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
+import { date, count, accountState, remaining } from "./console-utils.mjs";
+const { Text, Paragraph } = Typography;
+export function AccountsPanel({
+  state,
+  api,
+  action,
+  blocked,
+  login,
+  loginUrl,
+}) {
+  const { modal } = App.useApp();
+  const accounts = state.accounts;
+  const [search, setSearch] = useState(""),
+    [filter, setFilter] = useState("all"),
+    [selected, setSelected] = useState([]),
+    [detail, setDetail] = useState(null),
+    [models, setModels] = useState(null),
+    [edit, setEdit] = useState(null),
+    [batch, setBatch] = useState(null),
+    [callback, setCallback] = useState("");
+  const [form] = Form.useForm();
+  useEffect(() => {
+    setSelected((prev) =>
+      prev.filter((k) => accounts.some((a) => a.key === k)),
+    );
+  }, [accounts.map((a) => a.key).join(",")]);
+  useEffect(() => {
+    if (!state.loginPending) setCallback("");
+  }, [state.loginPending]);
+  const locked = blocked || state.loginPending || !!state.gatewayActive;
+  const rows = accounts.filter(
+    (a) =>
+      (filter === "all" || accountState(a) === filter) &&
+      [a.label, a.note, a.statusMessage]
+        .join(" ")
+        .toLowerCase()
+        .includes(search.toLowerCase()),
+  );
+  async function batchAction(keys, type) {
+    const r = await action(() => api("accounts/batch", { keys, action: type }));
+    if (r) setBatch(r);
+  }
+  const confirmBatch = (keys, type) =>
+    modal.confirm({
+      title: `${{ enable: "启用", disable: "停用", refresh: "刷新授权" }[type]} ${keys.length} 个账号？`,
+      content:
+        type === "refresh"
+          ? "由 ModelBridge 更新登录凭证，不会展示或导出令牌。"
+          : "只操作已勾选的账号，正在执行请求时不能变更。",
+      okText: "确认执行",
+      cancelText: "取消",
+      onOk: () => batchAction(keys, type),
+    });
+  return (
+    <>
+      <Row gutter={[16, 16]}>
+        {[
+          ["全部账号", accounts.length],
+          ["可用", accounts.filter((a) => accountState(a) === "active").length],
+          [
+            "需要检查",
+            accounts.filter((a) => accountState(a) === "problem").length,
+          ],
+        ].map(([title, value]) => (
+          <Col xs={24} md={8} key={title}>
+            <Card>
+              <Statistic title={title} value={value} />
+            </Card>
+          </Col>
+        ))}
+      </Row>
+      <Card
+        title="Codex OAuth 账号"
+        extra={
+          <Space wrap>
+            <Button
+              disabled={blocked}
+              onClick={() => action(() => api("models/refresh", {}))}
+            >
+              刷新列表
+            </Button>
+            <Button type="primary" disabled={locked} onClick={login}>
+              添加 Codex 账号
+            </Button>
+          </Space>
+        }
+      >
+        <div className="toolbar">
+          <Input.Search
+            aria-label="搜索账号"
+            placeholder="搜索账号备注、标识或错误"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            allowClear
+          />
+          <Segmented
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: "all", label: "全部" },
+              { value: "active", label: "可用" },
+              { value: "disabled", label: "停用" },
+              { value: "problem", label: "问题" },
+            ]}
+          />
+        </div>
+        <Space wrap className="spaced">
+          <Text>已选 {selected.length} 个</Text>
+          {["enable", "disable", "refresh"].map((type) => (
+            <Button
+              key={type}
+              disabled={!selected.length || locked}
+              onClick={() => confirmBatch(selected, type)}
+            >
+              {
+                {
+                  enable: "批量启用",
+                  disable: "批量停用",
+                  refresh: "刷新凭证",
+                }[type]
+              }
+            </Button>
+          ))}
+          <Button disabled={!selected.length} onClick={() => setSelected([])}>
+            取消选择
+          </Button>
+        </Space>
+        <Table
+          className="spaced"
+          rowKey="key"
+          dataSource={[...rows].sort((a, b) => b.priority - a.priority)}
+          rowSelection={{
+            selectedRowKeys: selected,
+            onChange: setSelected,
+            getCheckboxProps: () => ({ disabled: locked }),
+          }}
+          scroll={{ x: 1000 }}
+          pagination={{
+            defaultPageSize: 10,
+            showSizeChanger: true,
+            showTotal: (n) => `共 ${n} 个账号`,
+          }}
+          columns={[
+            {
+              title: "账号 / 备注",
+              render: (_, a) => (
+                <>
+                  <Button type="link" onClick={() => setDetail(a)}>
+                    {a.note || a.label}
+                  </Button>
+                  <div>
+                    <Text type="secondary">{a.label}</Text>
+                  </div>
+                </>
+              ),
+              sorter: (a, b) =>
+                (a.note || a.label).localeCompare(b.note || b.label),
+            },
+            {
+              title: "状态",
+              render: (_, a) => (
+                <Tag
+                  color={
+                    accountState(a) === "active"
+                      ? "success"
+                      : accountState(a) === "problem"
+                        ? "error"
+                        : "default"
+                  }
+                >
+                  {a.active
+                    ? "当前使用"
+                    : {
+                        active: "可用",
+                        disabled: "已停用",
+                        problem: "需要检查",
+                      }[accountState(a)]}
+                </Tag>
+              ),
+            },
+            {
+              title: "请求成功 / 失败",
+              render: (_, a) =>
+                `${count(a.successCount)} / ${count(a.failureCount)}`,
+            },
+            {
+              title: "列表排序",
+              dataIndex: "priority",
+              sorter: (a, b) => a.priority - b.priority,
+            },
+            { title: "最近刷新", dataIndex: "lastRefresh", render: date },
+            {
+              title: "操作",
+              render: (_, a) => (
+                <Space wrap>
+                  <Button
+                    size="small"
+                    disabled={locked || a.disabled || a.active}
+                    onClick={() =>
+                      action(() => api("account", { key: a.key }), "已切换账号")
+                    }
+                  >
+                    使用此账号
+                  </Button>
+                  <Button
+                    size="small"
+                    disabled={locked}
+                    onClick={() => {
+                      setEdit(a);
+                      form.setFieldsValue({
+                        note: a.note || "",
+                        priority: a.priority,
+                      });
+                    }}
+                  >
+                    编辑
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() =>
+                      action(async () => {
+                        setModels({ account: a, loading: true });
+                        const r = await api("accounts/models", { key: a.key });
+                        setModels({ account: a, ...r });
+                      })
+                    }
+                  >
+                    模型
+                  </Button>
+                  <Button
+                    size="small"
+                    disabled={locked}
+                    onClick={() =>
+                      confirmBatch([a.key], a.disabled ? "enable" : "disable")
+                    }
+                  >
+                    {a.disabled ? "启用" : "停用"}
+                  </Button>
+                  <Button
+                    size="small"
+                    disabled={locked}
+                    onClick={() => batchAction([a.key], "refresh")}
+                  >
+                    刷新凭证
+                  </Button>
+                  <Button size="small" disabled={locked} onClick={login}>
+                    重新授权
+                  </Button>
+                  <Button
+                    size="small"
+                    danger
+                    disabled={locked}
+                    onClick={() =>
+                      modal.confirm({
+                        title: "移除这个账号？",
+                        content:
+                          "删除引擎中保存的该账号授权，需要重新登录才能恢复。",
+                        okText: "移除账号",
+                        cancelText: "取消",
+                        onOk: () =>
+                          action(
+                            () =>
+                              api("accounts/action", {
+                                key: a.key,
+                                action: "remove",
+                              }),
+                            "账号已移除",
+                          ),
+                      })
+                    }
+                  >
+                    移除
+                  </Button>
+                </Space>
+              ),
+            },
+          ]}
+        />
+        <Text type="secondary">
+          请求计数来自本机最近 100 条记录。重新授权时请在官方页面选择对应账号。
+        </Text>
+      </Card>
+      <Drawer
+        title="账号详情"
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        size="large"
+      >
+        {detail && (
+          <Descriptions
+            column={1}
+            items={Object.entries({
+              账号: detail.label,
+              备注: detail.note || "—",
+              列表排序: detail.priority,
+              状态: detail.status,
+              错误说明: detail.statusMessage || "无",
+              更新时间: date(detail.updatedAt),
+              凭证刷新时间: date(detail.lastRefresh),
+              下次重试: date(detail.nextRetryAt),
+              成功请求: count(detail.successCount),
+              失败请求: count(detail.failureCount),
+            }).map(([label, children]) => ({ key: label, label, children }))}
+          />
+        )}
+      </Drawer>
+      <Drawer
+        title={`${models?.account.note || models?.account.label || ""} · 支持的模型`}
+        open={!!models}
+        onClose={() => setModels(null)}
+        size="large"
+      >
+        <Table
+          rowKey="id"
+          loading={models?.loading}
+          dataSource={models?.models || []}
+          columns={[
+            {
+              title: "模型 ID",
+              dataIndex: "id",
+              render: (v) => <Text copyable>{v}</Text>,
+            },
+            { title: "显示名称", dataIndex: "displayName" },
+          ]}
+        />
+      </Drawer>
+      <Modal
+        title="编辑账号"
+        open={!!edit}
+        onCancel={() => setEdit(null)}
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={blocked}
+        onOk={() => form.submit()}
+      >
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={async (fields) => {
+            const r = await action(
+              () => api("accounts/update", { key: edit.key, fields }),
+              "账号已更新",
+            );
+            if (r) setEdit(null);
+          }}
+        >
+          <Form.Item label="备注" name="note">
+            <Input maxLength={200} showCount />
+          </Form.Item>
+          <Form.Item
+            label="列表排序"
+            name="priority"
+            rules={[{ required: true }]}
+          >
+            <InputNumber min={-1000} max={1000} />
+          </Form.Item>
+          <Paragraph type="secondary">
+            数值越高在列表中越靠前；实际调用使用你选中的账号。
+          </Paragraph>
+        </Form>
+      </Modal>
+      <Modal
+        title="批量操作结果"
+        open={!!batch}
+        onCancel={() => setBatch(null)}
+        footer={<Button onClick={() => setBatch(null)}>完成</Button>}
+      >
+        {batch?.refreshWarning && (
+          <Alert type="warning" title={batch.refreshWarning} />
+        )}
+        <Table
+          rowKey="key"
+          dataSource={batch?.results || []}
+          columns={[
+            {
+              title: "账号",
+              render: (_, r) =>
+                accounts.find((a) => a.key === r.key)?.label || r.key,
+            },
+            {
+              title: "结果",
+              render: (_, r) => (
+                <Tag color={r.ok ? "success" : "error"}>
+                  {r.ok ? "完成" : r.message}
+                </Tag>
+              ),
+            },
+          ]}
+        />
+      </Modal>
+      <Modal
+        title="Codex OAuth 授权"
+        open={state.loginPending}
+        closable={false}
+        footer={
+          <Button
+            disabled={blocked}
+            onClick={() =>
+              action(() => api("login/cancel", {}), "本次授权已取消")
+            }
+          >
+            取消本次授权
+          </Button>
+        }
+      >
+        <Paragraph>
+          在 OpenAI 官方页面完成登录，成功后账号会自动出现在列表中。
+        </Paragraph>
+        <Space wrap>
+          <Button
+            type="primary"
+            href={loginUrl || undefined}
+            disabled={!loginUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            打开授权页
+          </Button>
+          <Button
+            disabled={!loginUrl}
+            onClick={() =>
+              action(
+                () => navigator.clipboard.writeText(loginUrl),
+                "授权链接已复制",
+              )
+            }
+          >
+            复制授权链接
+          </Button>
+        </Space>
+        <Paragraph className="spaced" type="secondary">
+          本次等待截止：{date(state.loginExpiresAt)}
+        </Paragraph>
+        <Alert
+          type="info"
+          title="没有自动返回时"
+          description="完成官方登录后，可以将浏览器中的 localhost 回调地址粘贴到下方。只接受当前这次授权的回调。"
+        />
+        <Input.Password
+          className="spaced"
+          aria-label="OAuth 回调地址"
+          placeholder="http://127.0.0.1:43821/auth/callback?..."
+          value={callback}
+          onChange={(e) => setCallback(e.target.value)}
+          autoComplete="off"
+        />
+        <Button
+          className="spaced"
+          disabled={!callback || blocked}
+          onClick={async () => {
+            const r = await action(
+              () => api("login/callback", { url: callback }),
+              "已提交，等待引擎确认",
+            );
+            if (r) setCallback("");
+          }}
+        >
+          提交回调
+        </Button>
+      </Modal>
+    </>
+  );
+}
+
+export function QuotaPanel({ state, api, action, blocked }) {
+  const [search, setSearch] = useState(""),
+    [filter, setFilter] = useState("all"),
+    [sort, setSort] = useState("default"),
+    [compact, setCompact] = useState(false),
+    [running, setRunning] = useState(false),
+    [progress, setProgress] = useState("");
+  const stop = useRef(false);
+  useEffect(
+    () => () => {
+      stop.current = true;
+    },
+    [],
+  );
+  const rows = state.accounts.filter(
+    (a) =>
+      [a.label, a.note]
+        .join(" ")
+        .toLowerCase()
+        .includes(search.toLowerCase()) &&
+      (filter === "all" ||
+        (filter === "low" && remaining(a) !== null && remaining(a) <= 20) ||
+        (filter === "unknown" && remaining(a) === null) ||
+        (filter === "active" && accountState(a) === "active")),
+  );
+  if (sort !== "default")
+    rows.sort((a, b) => {
+      const aa = remaining(a),
+        bb = remaining(b);
+      if (aa === null) return bb === null ? 0 : 1;
+      if (bb === null) return -1;
+      return sort === "low" ? aa - bb : bb - aa;
+    });
+  async function refreshAll() {
+    stop.current = false;
+    setRunning(true);
+    let done = 0,
+      failed = 0;
+    try {
+      for (const a of rows) {
+        if (stop.current) break;
+        const r = await action(() => api("accounts/quota", { key: a.key }));
+        done++;
+        if (!r || r.status !== "available") failed++;
+        setProgress(
+          `已查询 ${done}/${rows.length}，${failed} 个未返回可用额度`,
+        );
+      }
+    } finally {
+      setRunning(false);
+    }
+  }
+  return (
+    <>
+      <Card
+        title="配额管理"
+        extra={
+          <Space>
+            {running ? (
+              <Button
+                onClick={() => {
+                  stop.current = true;
+                }}
+              >
+                停止后续查询
+              </Button>
+            ) : (
+              <Button
+                type="primary"
+                disabled={blocked || !rows.length || !state.engine.reachable}
+                onClick={refreshAll}
+              >
+                刷新当前筛选账号
+              </Button>
+            )}
+            <Button onClick={() => setCompact(!compact)}>
+              {compact ? "宽松布局" : "紧凑布局"}
+            </Button>
+          </Space>
+        }
+      >
+        <div className="toolbar">
+          <Input.Search
+            aria-label="搜索配额账号"
+            placeholder="搜索账号或备注"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            allowClear
+          />
+          <Select
+            aria-label="配额筛选"
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: "all", label: "全部账号" },
+              { value: "active", label: "可用账号" },
+              { value: "low", label: "剩余 ≤ 20%" },
+              { value: "unknown", label: "未查询 / 不可用" },
+            ]}
+          />
+          <Select
+            aria-label="配额排序"
+            value={sort}
+            onChange={setSort}
+            options={[
+              { value: "default", label: "默认排序" },
+              { value: "low", label: "剩余从低到高" },
+              { value: "high", label: "剩余从高到低" },
+            ]}
+          />
+        </div>
+        <Text type="secondary">
+          仅展示上游实际返回的额度；未知不会视为充足。数值是上次查询的快照。
+        </Text>
+        {progress && (
+          <Alert
+            className="spaced"
+            title={progress}
+            type={running ? "info" : "success"}
+          />
+        )}
+      </Card>
+      <Row gutter={[16, 16]}>
+        {rows.map((a) => (
+          <Col xs={24} lg={compact ? 8 : 12} key={a.key}>
+            <Card
+              title={a.note || a.label}
+              extra={
+                <Button
+                  disabled={blocked || running || !state.engine.reachable}
+                  onClick={() =>
+                    action(() => api("accounts/quota", { key: a.key }))
+                  }
+                >
+                  刷新配额
+                </Button>
+              }
+            >
+              <Space wrap>
+                <Tag>Codex</Tag>
+                <Tag>{a.quota?.planType || "套餐待查询"}</Tag>
+                {a.disabled && <Tag>已停用</Tag>}
+              </Space>
+              {!a.quota ? (
+                <Empty description="尚未查询" />
+              ) : a.quota.status !== "available" ? (
+                <Alert
+                  className="spaced"
+                  type="warning"
+                  title={a.quota.message || "上游未返回额度窗口"}
+                />
+              ) : (
+                a.quota.windows.map((w) => (
+                  <div className="quota-window" key={w.id}>
+                    <div className="between">
+                      <Text>{w.label}</Text>
+                      <Text>
+                        {w.usedPercent === null
+                          ? "用量未知"
+                          : `剩余 ${Math.max(0, 100 - w.usedPercent).toFixed(0)}%`}
+                      </Text>
+                    </div>
+                    {w.usedPercent !== null && (
+                      <Progress
+                        percent={Math.max(
+                          0,
+                          Math.min(100, 100 - w.usedPercent),
+                        )}
+                        showInfo={false}
+                        status={w.usedPercent >= 80 ? "exception" : "normal"}
+                      />
+                    )}
+                    <Text type="secondary">恢复时间：{date(w.resetAtMs)}</Text>
+                  </div>
+                ))
+              )}
+              <Paragraph type="secondary" className="spaced">
+                查询时间：{date(a.quota?.checkedAt)}
+              </Paragraph>
+            </Card>
+          </Col>
+        ))}
+      </Row>
+      {!rows.length && <Empty description="没有符合筛选条件的账号" />}
+    </>
+  );
+}

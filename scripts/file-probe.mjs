@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { loadVault } from "../src/vault.mjs";
-import { readChat, localFetch } from "../src/engine-client.mjs";
+import { readChat, localFetch } from "../src/local-client.mjs";
 import { executeFileTool } from "../src/file-tools.mjs";
 import { watchParent } from "../src/parent-lifecycle.mjs";
 watchParent();

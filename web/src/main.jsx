@@ -1,3 +1,12 @@
+import { AccountsPanel, QuotaPanel } from "./account-panels.jsx";
+import {
+  OverviewMetrics,
+  RulesPanel,
+  SettingsPanel,
+  LogsPanel,
+  ReportsPanel,
+  ConnectionGuide,
+} from "./operation-panels.jsx";
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -171,13 +180,13 @@ function Console() {
     }
   }
   const ready = state?.engine.reachable,
-    blocked = working || !!state?.busy;
+    blocked = working || !!state?.busy || !!state?.gatewayActive;
   const models = state?.models || [],
     accounts = state?.accounts || [],
     reports = state?.reports || [],
     traffic = state?.traffic || [];
   async function login() {
-    const result = await action(() => api("login", {}));
+    const result = await action(() => api("login", { newAccount: true }));
     if (result) {
       setLoginUrl(result.url);
       window.open(result.url, "_blank", "noopener,noreferrer");
@@ -323,9 +332,8 @@ function Console() {
                 current={!ready ? 0 : !accounts.length ? 1 : 2}
                 items={[
                   {
-                    title: "连接本机引擎",
-                    description:
-                      state?.engine.baseUrl || "在设置中连接 CLIProxyAPI",
+                    title: "启动 ModelBridge",
+                    description: "本机独立运行，无需安装其他代理服务",
                   },
                   {
                     title: "登录 Codex 账号",
@@ -344,11 +352,11 @@ function Console() {
               <Descriptions
                 column={1}
                 items={[
-                  { key: "v", label: "ModelBridge", children: "0.2.0" },
+                  { key: "v", label: "ModelBridge", children: "0.3.0" },
                   {
                     key: "e",
-                    label: "CLIProxyAPI",
-                    children: state?.engine.version || "未连接",
+                    label: "请求处理",
+                    children: "ModelBridge 独立实现",
                   },
                   {
                     key: "t",
@@ -363,8 +371,7 @@ function Console() {
                 ]}
               />
               <Paragraph type="secondary">
-                会员授权和请求兼容由 CLIProxyAPI 处理。ModelBridge
-                提供管理、接入和验证。
+                会员授权、模型请求和工具兼容均由本项目直接处理。
               </Paragraph>
             </Card>
           </Col>
@@ -385,226 +392,10 @@ function Console() {
         </Card>
       </>
     ),
-    accounts: (
-      <>
-        <Card
-          title="Codex OAuth 账号"
-          extra={
-            <Button
-              type="primary"
-              disabled={!ready || blocked || state?.loginPending}
-              onClick={login}
-            >
-              添加 Codex 账号
-            </Button>
-          }
-        >
-          <Paragraph type="secondary">
-            在 OpenAI 官方页面登录。账号令牌由本机 CLIProxyAPI
-            保存，管理界面不会显示令牌。
-          </Paragraph>
-          {state?.loginPending && (
-            <Alert
-              showIcon
-              type="info"
-              title="等待完成官方授权"
-              description={
-                loginUrl ? (
-                  <a href={loginUrl} target="_blank" rel="noreferrer">
-                    继续前往 OpenAI 授权页面 ↗
-                  </a>
-                ) : (
-                  "请在已打开的 OpenAI 页面完成登录。授权结束后会自动更新。"
-                )
-              }
-            />
-          )}
-          <Table
-            rowKey="key"
-            dataSource={accounts}
-            pagination={false}
-            scroll={{ x: 640 }}
-            columns={[
-              { title: "账号", dataIndex: "label" },
-              {
-                title: "状态",
-                render: (_, a) => (
-                  <Tag
-                    color={
-                      a.disabled
-                        ? "default"
-                        : a.status === "active" && !a.unavailable
-                          ? "success"
-                          : "warning"
-                    }
-                  >
-                    {a.disabled
-                      ? "已停用"
-                      : a.status === "active" && !a.unavailable
-                        ? "可用"
-                        : "需要检查"}
-                  </Tag>
-                ),
-              },
-              {
-                title: "启用",
-                render: (_, a) => (
-                  <Switch
-                    checked={!a.disabled}
-                    disabled={blocked || !!state?.loginPending}
-                    onChange={(v) =>
-                      action(() =>
-                        api("accounts/action", {
-                          key: a.key,
-                          action: v ? "enable" : "disable",
-                        }),
-                      )
-                    }
-                  />
-                ),
-              },
-              {
-                title: "操作",
-                render: (_, a) => (
-                  <Space>
-                    <Button
-                      type="link"
-                      disabled={blocked}
-                      onClick={() => {
-                        location.hash = "quota";
-                        action(() => api("accounts/quota", { key: a.key }));
-                      }}
-                    >
-                      查看配额
-                    </Button>
-                    <Button
-                      type="link"
-                      disabled={blocked || state?.loginPending}
-                      onClick={login}
-                    >
-                      重新授权
-                    </Button>
-                    <Button
-                      type="link"
-                      danger
-                      disabled={blocked}
-                      onClick={() =>
-                        modal.confirm({
-                          title: "移除这个 Codex 账号？",
-                          content:
-                            "将删除该账号在 CLIProxyAPI 中保存的授权，其他账号保留。以后可重新登录添加。",
-                          okText: "移除账号",
-                          okButtonProps: { danger: true },
-                          cancelText: "取消",
-                          onOk: () =>
-                            action(
-                              () =>
-                                api("accounts/action", {
-                                  key: a.key,
-                                  action: "remove",
-                                }),
-                              "账号已移除",
-                            ),
-                        })
-                      }
-                    >
-                      移除
-                    </Button>
-                  </Space>
-                ),
-              },
-            ]}
-          />
-        </Card>
-        <Alert
-          type="info"
-          showIcon
-          title="重新授权时，请在官方页面选择对应账号。已有会话也可以用来添加另一个 Codex 账号。"
-        />
-      </>
-    ),
-    quota: (
-      <>
-        <Alert
-          type="info"
-          showIcon
-          title="按需查询账号配额"
-          description="显示上游返回的用量窗口和恢复时间。查询不到的数据会明确标记，不会估算成可用额度。"
-        />
-        {accounts.length ? (
-          <Row gutter={[20, 20]}>
-            {accounts.map((a) => (
-              <Col xs={24} xl={12} key={a.key}>
-                <Card
-                  title={a.label}
-                  extra={
-                    <Button
-                      disabled={blocked || !ready}
-                      loading={working}
-                      onClick={() =>
-                        action(() => api("accounts/quota", { key: a.key }))
-                      }
-                    >
-                      刷新配额
-                    </Button>
-                  }
-                >
-                  <Space>
-                    <Tag>Codex OAuth</Tag>
-                    {a.quota?.planType && (
-                      <Tag color="green">{a.quota.planType}</Tag>
-                    )}
-                  </Space>
-                  {!a.quota ? (
-                    <Empty description="点击刷新读取配额" />
-                  ) : a.quota.status === "unavailable" ? (
-                    <Alert
-                      className="spaced"
-                      type="warning"
-                      title={
-                        a.quota.message || "当前账号未返回可展示的配额窗口"
-                      }
-                    />
-                  ) : (
-                    a.quota.windows.map((w) => (
-                      <div className="quota-window" key={w.id}>
-                        <div className="between">
-                          <Text>{w.label}</Text>
-                          <Text type="secondary">
-                            {w.usedPercent === null
-                              ? "用量未知"
-                              : `剩余 ${Math.max(0, 100 - w.usedPercent).toFixed(0)}%`}
-                          </Text>
-                        </div>
-                        <Progress
-                          percent={
-                            w.usedPercent === null
-                              ? 0
-                              : Math.max(0, Math.min(100, 100 - w.usedPercent))
-                          }
-                          showInfo={false}
-                          status={w.usedPercent >= 95 ? "exception" : "normal"}
-                        />
-                        <Text type="secondary">
-                          恢复时间：{date(w.resetAtMs)}
-                        </Text>
-                      </div>
-                    ))
-                  )}
-                  <Paragraph type="secondary" className="spaced">
-                    查询时间：{date(a.quota?.checkedAt)}
-                  </Paragraph>
-                </Card>
-              </Col>
-            ))}
-          </Row>
-        ) : (
-          <Card>
-            <Empty description="请先添加 Codex 账号" />
-          </Card>
-        )}
-      </>
-    ),
+    accounts: state ? (
+      <AccountsPanel {...{ state, api, action, blocked, login, loginUrl }} />
+    ) : null,
+    quota: state ? <QuotaPanel {...{ state, api, action, blocked }} /> : null,
     models: (
       <Card
         title={`模型目录 · ${models.length}`}
@@ -631,30 +422,35 @@ function Console() {
             onChange={setModelType}
             options={[
               { label: "全部", value: "all" },
-              { label: "文本", value: "text" },
-              { label: "图像", value: "image" },
+              { label: "可用", value: "available" },
+              { label: "不可选 / 已禁用", value: "hidden" },
             ]}
           />
         </div>
         <Alert
           type="info"
-          title="目录存在不等于能力已验证。图像模型目前仅展示；文本模型可以进行真实调用验证。"
+          title="目录声明与实测结果分别展示；不可选条目不会提供给客户端。"
         />
         <Table
           className="spaced"
           rowKey="slug"
-          scroll={{ x: 680 }}
+          scroll={{ x: 1000 }}
           dataSource={models.filter(
             (m) =>
               m.slug.includes(query) &&
-              (modelType === "all" || modelType === m.kind),
+              (modelType === "all" ||
+                (modelType === "available" && m.selectable) ||
+                (modelType === "hidden" && !m.selectable)),
           )}
           columns={[
-            { title: "模型名称", dataIndex: "slug" },
+            { title: "模型名称", dataIndex: "slug", width:180, render:v=><Text copyable>{v}</Text> },
             {
-              title: "类型",
-              dataIndex: "kind",
-              render: (v) => <Tag>{v === "image" ? "图像" : "文本"}</Tag>,
+              title: "可用性",
+              render: (_, m) => (
+                <Tag color={m.selectable ? "success" : "default"}>
+                  {m.selectable ? "可用" : "不可选"}
+                </Tag>
+              ),
             },
             {
               title: "基础工具",
@@ -663,6 +459,14 @@ function Console() {
             {
               title: "文件工具",
               render: (_, m) => statusTag(m.checks.files?.status),
+            },
+            {
+              title: "MCP 工具",
+              render: (_, m) => statusTag(m.checks.mcp?.status),
+            },
+            {
+              title: "长会话",
+              render: (_, m) => statusTag(m.checks.long?.status),
             },
             {
               title: "操作",
@@ -705,7 +509,7 @@ function Console() {
                 label: "服务地址",
                 children: (
                   <Space wrap>
-                    <Text code>{location.origin}/v1</Text>
+                    <Text code>{location.origin}/workbuddy/v1</Text>
                     <Button size="small" onClick={() => copy("baseUrl")}>
                       复制地址
                     </Button>
@@ -732,13 +536,16 @@ function Console() {
             ]}
           />
           <Paragraph className="spaced" type="secondary">
-            本机连接密钥用于保护 ModelBridge，Codex 账号仍通过 OAuth 登录。
+            WorkBuddy 使用上述专用地址：连接探测放宽 1 token
+            上限，标题辅助请求的 none 映射到 low，转换会记录在日志中；普通 /v1
+            接口保持严格校验。
           </Paragraph>
         </Card>
         <Card title="接入 WorkBuddy">
           <Paragraph>
-            将工具验证通过的模型加入 WorkBuddy。已有 ModelBridge / CLIProxyAPI
-            条目会更新连接地址，其他模型配置会保留；修改前自动保存加密备份。
+            将工具验证通过的模型加入 WorkBuddy。已有 ModelBridge
+            条目会更新连接地址；当前账号不再可选的旧 ModelBridge
+            条目移入加密备份，其他模型配置保留。
           </Paragraph>
           <Space wrap>
             <Button
@@ -752,7 +559,7 @@ function Console() {
                 modal.confirm({
                   title: "更新 WorkBuddy 连接配置",
                   content:
-                    "应用工具验证已通过的模型，并保留已有能力配置。更新后请刷新 WorkBuddy 窗口。",
+                    "更新已通过工具验证的模型；将本机网关中不可用的旧 ModelBridge 条目移入加密备份，保留其他配置。更新后请刷新 WorkBuddy 窗口。",
                   okText: "保存配置",
                   cancelText: "取消",
                   onOk: () =>
@@ -784,8 +591,8 @@ function Console() {
         <Alert
           showIcon
           type="info"
-          title="启动顺序：CLIProxyAPI → ModelBridge → WorkBuddy"
-          description="两个本机服务需要保持运行。关闭 ModelBridge 不会停止独立的 CLIProxyAPI。"
+          title="启动顺序：ModelBridge → WorkBuddy"
+          description="只需保持 ModelBridge 运行，无需启动 CLIProxyAPI。"
         />
       </>
     ),
@@ -834,210 +641,34 @@ function Console() {
             轮连续工具调用、工具报错和历史内容回忆，需要数分钟。
           </Paragraph>
         </Card>
-        <Card title="验证记录">
-          <Table
-            rowKey={(r) => r.startedAt + r.model}
-            columns={testsColumns}
-            dataSource={[...reports].reverse()}
-            scroll={{ x: 650 }}
-            pagination={{ pageSize: 10 }}
-          />
-        </Card>
+        <ReportsPanel reports={reports} columns={testsColumns} />
       </>
     ),
-    logs: (
-      <Card title="请求日志" extra={<Button onClick={refresh}>刷新</Button>}>
-        <div className="toolbar">
-          <Input.Search
-            placeholder="筛选模型、HTTP 状态或错误码"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            allowClear
-          />
-          <Segmented
-            value={logFilter}
-            onChange={setLogFilter}
-            options={[
-              { label: "全部", value: "all" },
-              { label: "异常", value: "errors" },
-            ]}
-          />
-        </div>
-        <Paragraph type="secondary">
-          保留最近 100
-          次请求摘要，仅保留脱敏错误摘要，不记录完整对话或账号令牌。“已转发”表示传输结束，模型任务是否完成请以客户端或验证结果为准。
-        </Paragraph>
-        <Table
-          rowKey="id"
-          columns={logsColumns}
-          dataSource={filteredLogs}
-          scroll={{ x: 650 }}
-          pagination={{ pageSize: 12 }}
-        />
-      </Card>
-    ),
-    settings: (
-      <>
-        <Card title="本机 CLIProxyAPI 连接">
-          <Paragraph type="secondary">
-            连接已经安装并运行的本机引擎。这里的密钥用于连接本机服务，账号授权在「Codex
-            账号」中完成。
-          </Paragraph>
-          <Form
-            form={engineForm}
-            layout="vertical"
-            initialValues={{ baseUrl: "http://127.0.0.1:8317" }}
-            onFinish={(data) =>
-              action(async () => {
-                await api("engine/connect", data);
-                engineForm.resetFields(["apiKey", "managementKey"]);
-              }, "本机引擎已连接")
-            }
-          >
-            <Form.Item
-              name="baseUrl"
-              label="本机引擎地址"
-              rules={[{ required: true }]}
-            >
-              <Input placeholder="http://127.0.0.1:8317" />
-            </Form.Item>
-            <Row gutter={16}>
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="apiKey"
-                  label="引擎客户端密钥"
-                  rules={[{ required: true }]}
-                >
-                  <Input.Password
-                    autoComplete="off"
-                    placeholder="仅连接时填写，保存后不回显"
-                  />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={12}>
-                <Form.Item
-                  name="managementKey"
-                  label="引擎管理密钥"
-                  rules={[{ required: true }]}
-                >
-                  <Input.Password
-                    autoComplete="off"
-                    placeholder="CLIProxyAPI 的管理密钥"
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-            <Button
-              htmlType="submit"
-              type="primary"
-              disabled={blocked}
-              loading={working}
-            >
-              验证并保存连接
-            </Button>
-          </Form>
-        </Card>
-        <Card
-          title="运行设置"
-          extra={
-            <Button disabled={!ready || blocked} onClick={readSettings}>
-              读取当前设置
-            </Button>
-          }
-        >
-          {!settings ? (
-            <Empty description="连接后读取当前设置" />
-          ) : (
-            <Form
-              form={settingsForm}
-              layout="vertical"
-              onFinish={setPendingSettings}
-            >
-              <Row gutter={20}>
-                <Col xs={24} md={8}>
-                  <Form.Item
-                    name="timeoutSeconds"
-                    label="单次请求超时（秒）"
-                    rules={[{ required: true }]}
-                  >
-                    <InputNumber min={30} max={600} />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={8}>
-                  <Form.Item
-                    name="requestRetry"
-                    label="引擎失败重试次数"
-                    rules={[{ required: true }]}
-                  >
-                    <InputNumber min={0} max={3} />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={8}>
-                  <Form.Item
-                    name="routingStrategy"
-                    label="多账号选择方式"
-                    rules={[{ required: true }]}
-                  >
-                    <Select
-                      options={[
-                        { value: "round-robin", label: "轮询账号" },
-                        {
-                          value: "fill-first",
-                          label: "优先使用第一个可用账号",
-                        },
-                      ]}
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Form.Item
-                name="loggingToFile"
-                label="引擎运行日志写入文件"
-                valuePropName="checked"
-              >
-                <Switch />
-              </Form.Item>
-              <Alert
-                type="info"
-                title="重试可能增加调用次数；账号选择仍受引擎的会话保持配置影响。保存前会展示改动。"
-              />
-              <Button
-                className="spaced"
-                htmlType="submit"
-                type="primary"
-                disabled={blocked}
-              >
-                查看改动并保存
-              </Button>
-            </Form>
-          )}
-        </Card>
-        <Card title="系统信息">
-          <Descriptions
-            column={1}
-            items={[
-              {
-                key: "m",
-                label: "ModelBridge",
-                children: "0.2.0 · React + Ant Design",
-              },
-              {
-                key: "c",
-                label: "CLIProxyAPI",
-                children: state?.engine.version || "未连接",
-              },
-              { key: "mode", label: "授权方式", children: "Codex OAuth" },
-              {
-                key: "policy",
-                label: "请求处理",
-                children: state?.engine.policy,
-              },
-            ]}
-          />
-        </Card>
-      </>
-    ),
+    logs: state ? (
+      <LogsPanel {...{ state, api, action, refresh }} onDetail={setDetails} />
+    ) : null,
+    settings: <SettingsPanel {...{ api, action, blocked }} />,
   };
+  if (state) {
+    content.overview = (
+      <>
+        {content.overview}
+        <OverviewMetrics state={state} />
+      </>
+    );
+    content.models = (
+      <>
+        {content.models}
+        <RulesPanel {...{ api, action, blocked }} />
+      </>
+    );
+    content.connection = (
+      <>
+        {content.connection}
+        <ConnectionGuide models={models} />
+      </>
+    );
+  }
   return (
     <ConfigProvider
       locale={zhCN}
@@ -1084,9 +715,9 @@ function Console() {
           <div className="sidebar-footer">
             <span className={`status-dot ${ready ? "online" : ""}`} />
             <span className="brand-text">
-              {ready ? "本机引擎已连接" : "等待连接引擎"}
+              {ready ? "会员通道已连接" : "等待账号授权"}
             </span>
-            <small className="brand-text">Powered by CLIProxyAPI</small>
+            <small className="brand-text">独立运行 · ModelBridge</small>
           </div>
         </Layout.Sider>
         <Layout>
@@ -1113,7 +744,7 @@ function Console() {
                 <Text type="secondary">你的账号，你的模型，你的工作流。</Text>
               </div>
               <Text type="secondary" className="local-label">
-                本机运行 · 0.2.0
+                本机运行 · 0.3.0
               </Text>
             </div>
             {(error || state?.lastError?.message) && (
@@ -1131,10 +762,10 @@ function Console() {
                   <Alert
                     showIcon
                     type="warning"
-                    title="尚未连接可用引擎"
+                    title="请先授权或选择可用账号"
                     action={
-                      <Button onClick={() => (location.hash = "settings")}>
-                        前往设置
+                      <Button onClick={() => (location.hash = "accounts")}>
+                        管理账号
                       </Button>
                     }
                   />
