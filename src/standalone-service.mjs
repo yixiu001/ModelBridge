@@ -29,6 +29,7 @@ import { prepareRequest } from "./request-contract.mjs";
 import { classifyFailure, normalizedUsage } from "./diagnostics.mjs";
 import {projectAccountState} from "./account-state.mjs";
 import {QuotaJobs} from "./quota-jobs.mjs";
+import {catalogRevision, diffCatalog, previewModelRules, verificationKey} from "./model-catalog.mjs";
 const hash = (v) =>
   createHash("sha256").update(JSON.stringify(v)).digest("hex");
 const fail = (message, code = "invalid_input", httpStatus = 400) => {
@@ -45,6 +46,8 @@ export class StandaloneService extends BridgeService {
     this.quotas = new Map();
     this.quotaJobs=new QuotaJobs({getAccount:key=>this.vault.accounts[key],query:(key,opts)=>this.quota(key,opts),persist:jobs=>this.save('quota-jobs.json',jobs)});
     this.quotaListener = options.quotaListener || listenQuotaCallback;
+    this.catalogs = {};
+    this.reportHistory = [];
     this.upstreamModels = [];
     this.prefs = structuredClone(DEFAULT_SETTINGS);
     this.writeQueue = Promise.resolve();
@@ -77,6 +80,7 @@ export class StandaloneService extends BridgeService {
     this.traffic = await this.read("direct-traffic.json", []);
     this.quotas=new Map(Object.entries(await this.read('quota-snapshots.json',{})));
     this.quotaJobs.hydrate(await this.read('quota-jobs.json',[]));
+    this.catalogs=await this.read("catalog-snapshots.json",{});
     this.initialized=true;
     await this.loadReports();
     if (this.account && !this.account.disabled)
@@ -85,12 +89,14 @@ export class StandaloneService extends BridgeService {
       });
   }
   get context() {
-    return hash({
-      version: 3,
-      account: this.vault.active,
-      excluded: this.prefs?.excluded,
-      aliases: this.prefs?.aliases,
-    });
+    return hash({version:4,account:this.vault.active,credentialRevision:this.account?.credentialRevision||1,catalogRevision:catalogRevision(this.upstreamModels),excluded:this.prefs.excluded,aliases:this.prefs.aliases});
+  }
+  reportKey(model,scenario){return verificationKey({accountKey:this.vault.active,credentialRevision:this.account?.credentialRevision||1,catalogRevision:catalogRevision(this.upstreamModels),rulesRevision:this.modelRules().revision,adapterVersion:4,model,scenario});}
+  async saveReport(report){
+    const value={...report,context:report.context||this.context,verificationKey:report.verificationKey||this.reportKey(report.model,report.kind)};
+    this.reportHistory.push(value);this.reportHistory=this.reportHistory.slice(-1000);
+    this.reports=this.reportHistory.filter(r=>r.context===this.context);
+    await this.save(this.reportFile,{context:this.context,reports:this.reports,history:this.reportHistory});
   }
   get reachable() {
     return !!this.account && !this.account.disabled && this.models.length > 0;
@@ -109,7 +115,8 @@ export class StandaloneService extends BridgeService {
   }
   async loadReports() {
     const data = await this.read("direct-reports.json", {});
-    this.reports = data.context === this.context ? data.reports : [];
+    this.reportHistory = data.history || (data.reports||[]).map(r=>({...r,context:data.context}));
+    this.reports = this.reportHistory.filter(r=>r.context===this.context);
   }
   async poll() {
     if (this.pending?.expiresAt < Date.now()) {
@@ -136,6 +143,8 @@ export class StandaloneService extends BridgeService {
         policy:
           "ModelBridge 直接请求会员通道；指定模型不替换，失败不自动重试。",
       },
+      catalog: this.catalogs[this.vault.active] || {stale:true,source:RESOURCE+"/models"},
+      reportHistory: this.reportHistory.map(r=>({...r,current:r.context===this.context})),
       quotaJob: this.quotaJobs.read(),
       accounts: Object.entries(this.vault.accounts).map(([key, a]) => ({
         key,
@@ -197,18 +206,30 @@ export class StandaloneService extends BridgeService {
       fail("管理操作进行中", "busy", 409);
     if (this.refreshing) return this.refreshing;
     if (this.job) fail("验证进行中", "busy", 409);
+    const accountKey=this.vault.active, credentialRevision=this.account?.credentialRevision||1;
+    const previous=this.catalogs[accountKey];
+    if(!this.upstreamModels.length&&previous?.credentialRevision===credentialRevision){this.upstreamModels=previous.models;this.applyRules();}
     this.refreshing = (async () => {
       const token = await this.accessToken();
-      this.upstreamModels = normalizeCatalog(
+      const discovered = normalizeCatalog(
         await this.json(RESOURCE + "/models", {
           headers: { Authorization: "Bearer " + token },
         }),
       );
+      if(this.vault.active!==accountKey||(this.account?.credentialRevision||1)!==credentialRevision)fail("账号已变化，忽略旧目录","stale_catalog",409);
+      const changes=diffCatalog(this.upstreamModels,discovered);
+      this.upstreamModels=discovered;
       this.applyRules();
       this.catalogAt = new Date().toISOString();
+      this.catalogs[accountKey]={accountKey,credentialRevision,revision:catalogRevision(discovered),models:discovered,source:RESOURCE+'/models',checkedAt:this.catalogAt,stale:false,changes};
+      await this.save('catalog-snapshots.json',this.catalogs);
+      await this.loadReports();
       this.lastError = null;
       return this.models;
-    })().finally(() => {
+    })().catch(e=>{
+      if(this.catalogs[accountKey])this.catalogs[accountKey].stale=true;
+      throw e;
+    }).finally(() => {
       this.refreshing = null;
     });
     return this.refreshing;
@@ -633,6 +654,7 @@ export class StandaloneService extends BridgeService {
   async restoreSettings(data) {
     this.idle(); this.mutating = true;
     try {
+      const check=this.previewModelRules({rules:data.document?.values});if(check.errors.length)fail(check.errors.join("；"));
       const snapshot = await restoreSettings(this.dataDir, data);
       this.prefs = snapshot.values; this.timeoutSeconds = this.prefs.timeoutSeconds;
       this.applyRules(); await this.loadReports(); return snapshot;
@@ -646,6 +668,7 @@ export class StandaloneService extends BridgeService {
     const prefs = values ?? {...this.prefs, ...fields};
     this.mutating = true;
     try {
+      const check=this.previewModelRules({rules:prefs});if(check.errors.length)fail(check.errors.join("；"));
       const snapshot = await saveSettings(this.dataDir, {revision, values:prefs});
       this.prefs = snapshot.values; this.timeoutSeconds = this.prefs.timeoutSeconds;
       this.applyRules(); await this.loadReports();
@@ -656,6 +679,7 @@ export class StandaloneService extends BridgeService {
     const r = { excluded: this.prefs.excluded, aliases: this.prefs.aliases };
     return { ...r, revision: hash(r) };
   }
+  previewModelRules(data) { return previewModelRules({catalog:this.upstreamModels,rules:{excluded:this.prefs.excluded,aliases:this.prefs.aliases,...data.rules}}); }
   async saveModelRules(data) {
     this.idle();
     if (data.revision !== this.modelRules().revision)
@@ -888,6 +912,7 @@ export class StandaloneService extends BridgeService {
       model,
       kind,
       engine: "ModelBridge",
+      context:this.context,verificationKey:this.reportKey(model,kind),
       status: "failed",
       startedAt: new Date().toISOString(),
       requests: 0,
@@ -958,11 +983,7 @@ export class StandaloneService extends BridgeService {
     } finally {
       this.job = null;
       report.finishedAt = new Date().toISOString();
-      this.reports.push(report);
-      await this.save(this.reportFile, {
-        context: this.context,
-        reports: this.reports,
-      });
+      await this.saveReport(report);
     }
     return report;
   }

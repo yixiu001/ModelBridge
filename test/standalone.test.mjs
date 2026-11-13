@@ -10,6 +10,14 @@ const model = {
   selectable: true,
   declared: { supported_reasoning_levels: [{ effort: "low" }] },
 };
+test('catalog failures preserve a marked snapshot and old reports remain historical',async t=>{
+ const {s}=await setup(t);await s.refreshCatalog();
+ await s.saveReport({model:'chosen',kind:'tools',status:'passed',context:s.context});
+ s.fetcher=async()=>{throw new TypeError('network');};
+ await assert.rejects(()=>s.refreshCatalog());assert.equal(s.models[0].slug,'chosen');assert.equal(s.status().catalog.stale,true);
+ await s.saveModelRules({kind:'excluded',revision:s.modelRules().revision,values:['chosen']});
+ assert.equal(s.reports.length,0);assert.equal(s.status().reportHistory.length,1);
+});
 test('Responses unsupported effort is rejected before upstream and tool streams are never retried', async t=>{
  const {s,calls}=await setup(t);
  await assert.rejects(()=>s.responses({model:'chosen',input:'hi',reasoning:{effort:'none'}}),e=>e.details?.param==='reasoning.effort');

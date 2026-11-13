@@ -18,6 +18,7 @@ export async function runProbe(model, kind) {
     model,
     kind,
     engine: "ModelBridge",
+    context,verificationKey:this.reportKey?.(model,kind),
     status: "failed",
     startedAt: new Date().toISOString(),
   };
@@ -96,15 +97,8 @@ export async function runProbe(model, kind) {
   } finally {
     report.finishedAt = new Date().toISOString();
     try {
-      if (this.context === context) {
-        this.reports.push(report);
-        this.reports = this.reports.slice(-100);
-        this.saved = { context, reports: this.reports };
-        await writeFile(
-          join(this.dataDir, this.reportFile || "direct-reports.json"),
-          JSON.stringify(this.saved, null, 2),
-        );
-      }
+      if(this.saveReport) await this.saveReport(report);
+      else if(this.context===context) {this.reports.push(report);await writeFile(join(this.dataDir,this.reportFile||'direct-reports.json'),JSON.stringify({context,reports:this.reports}));}
     } finally {
       this.job = null;
     }

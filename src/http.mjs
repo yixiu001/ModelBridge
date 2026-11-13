@@ -263,6 +263,7 @@ export function createApp({ service, controlKey, gatewayKey }) {
         return json(200, await service.cancelLogin());
       if (url.pathname === "/api/login/callback" && service.submitLoginCallback)
         return json(200, await service.submitLoginCallback(data.url));
+      if (url.pathname === "/api/models/preview" && service.previewModelRules) return json(200,service.previewModelRules(data));
       if (url.pathname === "/api/models/rules" && service.modelRules)
         return json(200, await service.modelRules());
       if (url.pathname === "/api/models/rules/save" && service.saveModelRules)

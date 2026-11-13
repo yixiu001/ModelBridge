@@ -141,7 +141,7 @@ export function RulesPanel({ api, action, blocked }) {
     const r = await action(() => api("models/rules", {}));
     if (r) adopt(r);
   }
-  const save = (kind) => {
+  const save = async (kind) => {
     const values =
       kind === "excluded"
         ? excluded
@@ -149,6 +149,9 @@ export function RulesPanel({ api, action, blocked }) {
             .map((s) => s.trim())
             .filter(Boolean)
         : aliases;
+    const preview=await action(()=>api('models/preview',{rules:{excluded:rules.excluded,aliases:rules.aliases,[kind]:values}}));
+    if(!preview)return;
+    if(preview.errors.length){modal.error({title:'规则无法保存',content:preview.errors.join('；')});return;}
     modal.confirm({
       title:
         kind === "excluded"
@@ -162,7 +165,7 @@ export function RulesPanel({ api, action, blocked }) {
             Codex。目录会重新读取，规则改变后原验证结果需要重跑；已有客户端模型名称不会自动更新。
           </Paragraph>
           <pre className="config-preview">
-            {JSON.stringify({ 原值: rules[kind], 新值: values }, null, 2)}
+            {JSON.stringify({ 原值: rules[kind], 新值: values, 客户端新增:preview.changes.added,客户端移除:preview.changes.removed,变化:preview.changes.changed }, null, 2)}
           </pre>
         </>
       ),

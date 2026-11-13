@@ -1,3 +1,4 @@
+import {ModelsPage} from "./features/models/ModelsPage.jsx";
 import { AccountsPanel, QuotaPanel } from "./account-panels.jsx";
 import {
   OverviewMetrics,
@@ -397,107 +398,7 @@ function Console() {
       <AccountsPanel {...{ state, api, action, blocked, login, loginUrl }} />
     ) : null,
     quota: state ? <QuotaPanel {...{ state, api, action, blocked }} /> : null,
-    models: (
-      <Card
-        title={`模型目录 · ${models.length}`}
-        extra={
-          <Button
-            disabled={!ready || blocked}
-            onClick={() =>
-              action(() => api("models/refresh", {}), "目录已刷新")
-            }
-          >
-            刷新目录
-          </Button>
-        }
-      >
-        <div className="toolbar">
-          <Input.Search
-            placeholder="搜索模型名称"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            allowClear
-          />
-          <Segmented
-            value={modelType}
-            onChange={setModelType}
-            options={[
-              { label: "全部", value: "all" },
-              { label: "可用", value: "available" },
-              { label: "不可选 / 已禁用", value: "hidden" },
-            ]}
-          />
-        </div>
-        <Alert
-          type="info"
-          title="目录声明与实测结果分别展示；不可选条目不会提供给客户端。"
-        />
-        <Table
-          className="spaced"
-          rowKey="slug"
-          scroll={{ x: 1000 }}
-          dataSource={models.filter(
-            (m) =>
-              m.slug.includes(query) &&
-              (modelType === "all" ||
-                (modelType === "available" && m.selectable) ||
-                (modelType === "hidden" && !m.selectable)),
-          )}
-          columns={[
-            { title: "模型名称", dataIndex: "slug", width:180, render:v=><Text copyable>{v}</Text> },
-            {
-              title: "可用性",
-              render: (_, m) => (
-                <Tag color={m.selectable ? "success" : "default"}>
-                  {m.selectable ? "可用" : "不可选"}
-                </Tag>
-              ),
-            },
-            {
-              title: "基础工具",
-              render: (_, m) => statusTag(m.checks.tools.status),
-            },
-            {
-              title: "文件工具",
-              render: (_, m) => statusTag(m.checks.files?.status),
-            },
-            {
-              title: "MCP 工具",
-              render: (_, m) => statusTag(m.checks.mcp?.status),
-            },
-            {
-              title: "长会话",
-              render: (_, m) => statusTag(m.checks.long?.status),
-            },
-            {
-              title: "操作",
-              render: (_, m) => (
-                <Space>
-                  <Button
-                    type="link"
-                    disabled={!m.selectable || blocked || !ready}
-                    onClick={() => verify(m.slug, "tools")}
-                  >
-                    验证工具
-                  </Button>
-                  <Button
-                    type="link"
-                    disabled={!m.selectable}
-                    onClick={() => {
-                      setSelected(m.slug);
-                      location.hash = "tests";
-                    }}
-                  >
-                    更多验证
-                  </Button>
-                </Space>
-              ),
-            },
-          ]}
-          pagination={{ pageSize: 10, showSizeChanger: false }}
-        />
-      </Card>
-    ),
+    models: <ModelsPage {...{state,api,action,blocked,verify}}/>,
     connection: (
       <>
         <Card title="客户端连接信息">
