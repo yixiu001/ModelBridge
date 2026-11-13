@@ -185,8 +185,9 @@ function Console() {
     accounts = state?.accounts || [],
     reports = state?.reports || [],
     traffic = state?.traffic || [];
-  async function login() {
-    const result = await action(() => api("login", { newAccount: true }));
+  async function login(accountKey, purpose = "inference") {
+    const key=typeof accountKey==='string'?accountKey:undefined;
+    const result = await action(() => purpose==='quota'?api("accounts/quota/login",{key}):api("login", { newAccount: !key, accountKey:key }));
     if (result) {
       setLoginUrl(result.url);
       window.open(result.url, "_blank", "noopener,noreferrer");

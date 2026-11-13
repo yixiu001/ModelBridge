@@ -18,6 +18,7 @@ import {
   Select,
   Space,
   Statistic,
+  Steps,
   Table,
   Tag,
   Typography,
@@ -34,6 +35,7 @@ export function AccountsPanel({
 }) {
   const { modal } = App.useApp();
   const accounts = state.accounts;
+  const healthLabel=s=>({missing:'未授权',ready:'授权已保存',expired:'已过期，可刷新',refresh_failed:'刷新失败，可重试',sign_in_required:'需重新登录'}[s]||'未知');
   const [search, setSearch] = useState(""),
     [filter, setFilter] = useState("all"),
     [selected, setSelected] = useState([]),
@@ -48,6 +50,7 @@ export function AccountsPanel({
       prev.filter((k) => accounts.some((a) => a.key === k)),
     );
   }, [accounts.map((a) => a.key).join(",")]);
+  useEffect(()=>{setDetail(old=>old?accounts.find(a=>a.key===old.key)||null:null);},[accounts]);
   useEffect(() => {
     if (!state.loginPending) setCallback("");
   }, [state.loginPending]);
@@ -77,6 +80,11 @@ export function AccountsPanel({
     });
   return (
     <>
+      <Card title="账号接入流程">
+        <Steps size="small" current={accounts.length ? (accounts.some(a=>a.health?.quota.state!=='missing')?2:1):0} items={[{title:'模型调用授权'},{title:'配额授权（可稍后）'},{title:'目录与验证'},{title:'接入客户端'}]}/>
+        <Paragraph className="spaced">模型调用和配额读取分别授权；跳过配额授权不影响已完成的模型授权。</Paragraph>
+        <Space wrap><Button onClick={()=>location.hash='models'}>查看模型目录</Button><Button onClick={()=>location.hash='tests'}>调用验证</Button><Button onClick={()=>location.hash='connection'}>客户端接入</Button></Space>
+      </Card>
       <Row gutter={[16, 16]}>
         {[
           ["全部账号", accounts.length],
@@ -267,9 +275,10 @@ export function AccountsPanel({
                   >
                     刷新凭证
                   </Button>
-                  <Button size="small" disabled={locked} onClick={login}>
+                  <Button size="small" disabled={locked} onClick={()=>login(a.key)}>
                     重新授权
                   </Button>
+                  <Button size="small" disabled={locked} onClick={()=>login(a.key,'quota')}>授权读取配额</Button>
                   <Button
                     size="small"
                     danger
@@ -318,6 +327,12 @@ export function AccountsPanel({
               备注: detail.note || "—",
               列表排序: detail.priority,
               状态: detail.status,
+              调用授权: healthLabel(detail.health?.inference.state),
+              配额授权: healthLabel(detail.health?.quota.state),
+              调用授权到期: date(detail.health?.inference.expiresAt),
+              配额授权到期: date(detail.health?.quota.expiresAt),
+              最近调用成功: date(detail.health?.inference.lastVerifiedAt),
+              自动续期已验证: detail.health?.inference.renewalVerified ? '是' : '尚未验证', 
               错误说明: detail.statusMessage || "无",
               更新时间: date(detail.updatedAt),
               凭证刷新时间: date(detail.lastRefresh),
@@ -413,7 +428,7 @@ export function AccountsPanel({
         />
       </Modal>
       <Modal
-        title="Codex OAuth 授权"
+        title={state.quotaLoginPending?"同一账号 · 配额授权":"Codex OAuth 模型调用授权"}
         open={state.loginPending}
         closable={false}
         footer={
@@ -428,7 +443,7 @@ export function AccountsPanel({
         }
       >
         <Paragraph>
-          在 OpenAI 官方页面完成登录，成功后账号会自动出现在列表中。
+          在 OpenAI 官方页面完成登录。定向恢复时请使用原账号；两项授权分别保存，取消不会删除已经完成的授权。
         </Paragraph>
         <Space wrap>
           <Button

@@ -216,6 +216,8 @@ export class BridgeService {
     const next = structuredClone(this.vault);
     next.accounts[key] = {
       ...next.accounts[key],
+      credentialRevision: (next.accounts[key]?.credentialRevision || 0) + 1,
+      refreshError: null,
       client_id: clientId,
       subject: identity.sub,
       email: identity.email,
@@ -226,6 +228,7 @@ export class BridgeService {
       scopes: typeof tokens.scope === "string" ? tokens.scope.split(/\s+/) : [],
       expiresAt: Date.now() + tokens.expires_in * 1000,
     };
+    if(this.pending !== pending) throw new Error("authorization cancelled");
     next.active = key;
     await saveVault(this.vaultPath, next);
     this.vault = next;
@@ -291,6 +294,8 @@ export class BridgeService {
           ? tokens.scope.split(/\s+/)
           : account.scopes,
       expiresAt: Date.now() + tokens.expires_in * 1000,
+      lastRefresh: new Date().toISOString(),
+      refreshError: null,
     });
     await saveVault(this.vaultPath, next);
     this.vault = next;

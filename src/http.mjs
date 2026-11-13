@@ -283,6 +283,7 @@ export function createApp({ service, controlKey, gatewayKey }) {
           url: await service.startLogin(
             `${base}/auth/callback`,
             data.newAccount === true,
+            data.accountKey,
           ),
         });
       if (url.pathname === "/api/models/refresh")

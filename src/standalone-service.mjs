@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { BridgeService, safeError } from "./service.mjs";
 import { saveVault } from "./vault.mjs";
 import {
+  beginLogin,
   RESOURCE,
   TOKEN_ENDPOINT,
   DIRECT_SCOPE,
@@ -26,6 +27,7 @@ import { parseCodexQuota } from "./vendor/codex-quota.mjs";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, settingsSnapshot, previewSettings, exportSettings, restoreSettings } from "./settings-store.mjs";
 import { prepareRequest } from "./request-contract.mjs";
 import { classifyFailure, normalizedUsage } from "./diagnostics.mjs";
+import {projectAccountState} from "./account-state.mjs";
 const hash = (v) =>
   createHash("sha256").update(JSON.stringify(v)).digest("hex");
 const fail = (message, code = "invalid_input", httpStatus = 400) => {
@@ -131,6 +133,7 @@ export class StandaloneService extends BridgeService {
       },
       accounts: Object.entries(this.vault.accounts).map(([key, a]) => ({
         key,
+        health: projectAccountState(a,{accountKey:key,inferenceVerifiedAt:this.traffic.findLast(t=>t.account===key&&t.status==='forwarded'&&t.credentialRevision===(a.credentialRevision||1))?.finishedAt,quotaVerifiedAt:this.quotas.get(key)?.checkedAt}),
         label: `账号 ${key.slice(0, 8)}`,
         active: key === this.vault.active,
         disabled: !!a.disabled,
@@ -156,6 +159,8 @@ export class StandaloneService extends BridgeService {
       traffic: this.traffic,
       loginExpiresAt: this.pending?.expiresAt,
       quotaLoginPending: this.pending?.purpose === "quota",
+      loginPurpose: this.pending?.purpose || "inference",
+      loginTarget: this.pending?.targetAccountKey || this.pending?.quotaAccountKey,
       models: this.models.map((m) => ({
         ...m,
         checks: Object.fromEntries(
@@ -240,9 +245,24 @@ export class StandaloneService extends BridgeService {
       this.mutating = false;
     }
   }
-  startLogin(uri, newAccount = true) {
+  startLogin(uri, newAccount = true, targetAccountKey) {
     this.idle();
-    return super.startLogin(uri, newAccount);
+    if(targetAccountKey && !this.vault.accounts[targetAccountKey]) fail("账号不存在");
+    this.pending=beginLogin({hostId:this.hostId,redirectUri:uri,account:targetAccountKey?this.vault.accounts[targetAccountKey]:newAccount?undefined:this.account});
+    this.pending.purpose="inference";this.pending.targetAccountKey=targetAccountKey;
+    this.lastError=null;return this.pending.url;
+  }
+  async refreshAccess() {
+    const key=this.vault.active;
+    try { return await super.refreshAccess(); }
+    catch(e){
+      if(this.vault.accounts[key]){
+        const next=structuredClone(this.vault);
+        next.accounts[key].refreshError=classifyFailure(e,{stage:"authorize"});
+        await saveVault(this.vaultPath,next);this.vault=next;
+      }
+      throw e;
+    }
   }
   cancelLogin() {
     if (this.mutating) fail("正在完成授权，请稍候", "busy", 409);
@@ -306,6 +326,7 @@ export class StandaloneService extends BridgeService {
               : a.scopes,
           expiresAt: Date.now() + tokens.expires_in * 1000,
           lastRefresh: new Date().toISOString(),
+          refreshError: null,
         });
       } else if (action === "remove") delete next.accounts[key];
       else next.accounts[key].disabled = action === "disable";
@@ -574,7 +595,9 @@ export class StandaloneService extends BridgeService {
     )
       fail("配额账号标识缺失或已变化，请检查登录账号。");
     const next = structuredClone(this.vault);
+    if(this.pending !== pending) fail("本次授权已取消");
     next.accounts[pending.quotaAccountKey].quotaAuth = {
+      credentialRevision: (target.quotaAuth?.credentialRevision || 0)+1,
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       expiresAt: Date.now() + tokens.expires_in * 1000,
