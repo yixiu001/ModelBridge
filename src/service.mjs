@@ -5,6 +5,7 @@ import { beginLogin, acceptCallback, validateIdToken, ISSUER, RESOURCE, TOKEN_EN
 import { loadVault, saveVault } from './vault.mjs';
 import { normalizeCatalog, requireModel, readResponseStream, verifyToolLoop, outputText, httpFailure } from './protocol.mjs';
 import { ChatAdapter } from './adapter.mjs';
+import { prepareCompatibility } from './compatibility.mjs';
 
 export function safeError(error) {
   if (error.name === 'AbortError') return { message: '操作已取消', code: 'cancelled' };
@@ -162,7 +163,7 @@ export class BridgeService {
     return report;
   }
   cancel() { this.job?.controller.abort(); }
-  async chat(body,{signal,onChunk}={}) {
+  async chat(body,{signal,onChunk,compatibility='strict'}={}) {
     if(!body||typeof body!=='object'||Array.isArray(body)||!Array.isArray(body.messages)||body.messages.some(m=>!m||typeof m!=='object'||Array.isArray(m))||(body.tools!==undefined&&!Array.isArray(body.tools)))throw new Error('invalid_chat_request');
     if(this.pending&&!this.pending.used)throw new Error('login in progress');
     this.gatewayActive++;
@@ -170,6 +171,8 @@ export class BridgeService {
     const trace={startedAt,model:typeof body.model==='string'?body.model.slice(0,256):null,fields:Object.keys(body),stream:body.stream===true,messageCount:body.messages?.length,roles:body.messages?.map(m=>m.role),messageFields:body.messages?.map(m=>Object.keys(m)),reasoningEffort:typeof body.reasoning_effort==='string'?body.reasoning_effort.slice(0,32):undefined,toolCount:body.tools?.length||0,toolResults:body.messages?.filter(m=>m.role==='tool').length||0};
     try{
       if(!this.models.length)await this.refreshCatalog();
+      const prepared=prepareCompatibility(body,this.models,compatibility);
+      trace.compatibility=compatibility;trace.adjustments=prepared.adjustments;
       const scope=this.vault.active;
       const token=await this.accessToken();
       const bounded=AbortSignal.any([...(signal?[signal]:[]),AbortSignal.timeout(180_000)]);
@@ -181,7 +184,14 @@ export class BridgeService {
         },
         request:async(request,{onEvent})=>readResponseStream(await this.fetcher(`${RESOURCE}/responses`,{method:'POST',redirect:'error',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Accept:'text/event-stream'},body:JSON.stringify(request),signal:bounded}),{signal:bounded,onEvent}),
       });
-      const result=await adapter.complete(body,{signal:bounded,onChunk});
+      const details={profile:compatibility,adjustments:prepared.adjustments};let firstChunk=true;
+      const bufferedProbe=prepared.adjustments.some(a=>a.code==='connection_probe_output_limit_not_forwarded');const probeChunks=[];
+      const emit=onChunk?chunk=>{onChunk(firstChunk&&compatibility!=='strict'?{...chunk,modelbridge:details}:chunk);firstChunk=false;}:undefined;
+      // WorkBuddy's tester closes after the first SSE chunk. Do not let a partial
+      // upstream response make that tester report success before completion.
+      const result=await adapter.complete(prepared.body,{signal:bounded,onChunk:bufferedProbe&&emit?chunk=>probeChunks.push(chunk):emit});
+      for(const chunk of probeChunks)emit(chunk);
+      if(compatibility!=='strict')result.modelbridge=details;
       trace.status='completed';trace.finishReason=result.choices[0].finish_reason;
       trace.returnedToolNames=result.choices[0].message.tool_calls?.map(t=>t.function.name)||[];
       return result;

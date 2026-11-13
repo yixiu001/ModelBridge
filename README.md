@@ -19,25 +19,31 @@
 
 2026-11-13 的授权账号目录返回 11 个条目，其中 8 个 `visibility:list`。8 个可选模型均完成两次 Responses 请求、一次本地 echo 调用和最终回答确认。
 
-2026-11-14，WorkBuddy 5.9.3 使用 `gpt-6.1-sol` 完成真实 Read → Write → Read 文件工具闭环，最终回答与磁盘结果均为 `MODELBRIDGE_WORKBUDDY_RESULT=42`。联调期间修复了客户端回传字段兼容问题，并在一次网络中断后重试完成。
+2026-11-14，WorkBuddy 5.9.3 的全部 8 个可选模型均已完成真实文件读取、写入、复读和最终回答确认，磁盘结果独立核对一致。剩余 7 个模型的标题辅助请求也全部完成。专用兼容模式的设置页连接测试已显示成功，另 7 个模型通过同格式 HTTP 探测；29 项自动测试通过。联调中的失败与针对性重试保留在验收记录中。
 
-这不是通用模型清单，其他账号或后续刷新可能不同。图片、全部推理档位、生产级多工具场景及 MCP 尚未验收；其余 7 个模型的 WorkBuddy 文件工具场景未逐一实测。
+这不是通用模型清单，其他账号或后续刷新可能不同。图片、全部推理档位、生产级多工具场景及 MCP 尚未验收。
 
-见 [当前状态](docs/current-state.md)、[首次接入验证](docs/verification-2026-11-13.md) 和 [WorkBuddy 验证](docs/workbuddy-verification-2026-11-14.md)。
+见 [当前状态](docs/current-state.md)、[首次接入验证](docs/verification-2026-11-13.md)、[WorkBuddy 首个模型验证](docs/workbuddy-verification-2026-11-14.md) 和 [兼容模式与其余七个模型验收](docs/workbuddy-compatibility-2026-11-14.md)。
 
 ## WorkBuddy 联调
 
-接口地址为 `http://127.0.0.1:43821/v1/chat/completions`，开启 WorkBuddy 自定义协议。模型名必须与当前账号目录完全一致。使用模型桥单独生成的本机推理密钥，不要填会员 OAuth 令牌或管理密钥。
+严格接口为 `http://127.0.0.1:43821/v1/chat/completions`。WorkBuddy 专用兼容接口为 `http://127.0.0.1:43821/workbuddy/v1/chat/completions`；两者均使用同一独立推理密钥和确切模型名。开启 WorkBuddy 自定义协议以使用完整地址，不要填会员 OAuth 令牌或管理密钥。
 
 本机 WorkBuddy 5.9.3 的配置在 `%USERPROFILE%\.workbuddy\models.json`。`scripts/configure-workbuddy.mjs` 会在加密备份后导入已通过基础工具测试的模型，并拒绝覆盖同名的其他服务模型。执行前须明确授权，不能对其他版本盲目使用。
 
 ```powershell
-node scripts/configure-workbuddy.mjs "$env:USERPROFILE\.workbuddy\models.json"
+node scripts/configure-workbuddy.mjs "$env:USERPROFILE\.workbuddy\models.json" --workbuddy-compat
 ```
 
 在任务页模型下拉列表内向下滚动，可找到自定义模型。保留默认工具权限，选择专用工作目录后再发送任务。配置文件内只有模型桥推理密钥，没有会员 OAuth 凭据；WorkBuddy 按自身格式保存该密钥，请勿分享其配置文件。
 
-已知限制：设置页“测试连接”发送 `max_tokens`；辅助请求会发送 `reasoning_effort:none`。当前会员目录/通道不支持这些值，会明确报错；实际文件任务没有这些参数且已通过。不会静默删除输出上限或替换推理档位。
+专用兼容模式需明确接受以下差异（本机用户已同意）。省略 `--workbuddy-compat` 使用严格接口，仍拒绝不支持的参数。
+
+- 仅对已识别的连接探测（单条 `Reply with OK.`、流式、`max_tokens:1`）移除上游不支持的输出上限。仍调用指定的真实模型，**不保证上游仅生成 1 token**；等待完整成功再发回 SSE，防止客户端收到首段内容就误判成功。
+- 仅对已识别的标题辅助请求，把 `reasoning_effort:none` 转为该模型目录支持的 `low`。这并非关闭推理，可能增加延迟和会员用量。其他请求不使用此规则。
+- 响应头 `X-ModelBridge-Compatibility: workbuddy-v1` 标明专用模式；首个 SSE 块/完整 JSON 中的 `modelbridge.adjustments` 以及本机日志记录实际转换。失败不伪装成功，模型不回退。
+
+配置脚本依据实际目录填写推理能力、默认档位及客户端支持的档位集合；对不能关闭推理的模型，使用 `onlyReasoning` 和 `canDisableThinking:false`，避免 WorkBuddy 在普通工具任务中发送 `none`。保留 `max` 等档位的同名映射；WorkBuddy 不支持的 `ultra` 不出现在客户端选择项中。更新后可重新选择模型以应用能力配置。
 
 兼容已观察到的 WorkBuddy 回合标记、请求/消息编号、工具展示文字和用量统计，校验类型后作为客户端元数据处理；模型输入、工具参数和结果保持完整。未知字段继续拒绝，不能据此认为所有客户端扩展均已兼容。
 

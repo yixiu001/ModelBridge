@@ -51,3 +51,16 @@ test('inference key is separate from management key and chat response uses stand
     assert.equal((await fetch(base+'/api/status',{headers:{authorization:'Bearer inference'}})).status,401);
   }finally{await new Promise(resolve=>server.close(resolve));}
 });
+test('only the dedicated authenticated endpoint selects the explicit WorkBuddy compatibility policy',async()=>{
+  const profiles=[];
+  const service={chat:async(body,options)=>{profiles.push(options.compatibility);return {ok:true};}};
+  const server=createApp({service,controlKey:'admin',gatewayKey:'inference'});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${server.address().port}`;
+  const send=(path,key='inference')=>fetch(base+path,{method:'POST',headers:{authorization:'Bearer '+key,'content-type':'application/json'},body:'{}'});
+  try{
+    assert.equal((await send('/workbuddy/v1/chat/completions','admin')).status,401);assert.deepEqual(profiles,[]);
+    const compat=await send('/workbuddy/v1/chat/completions');assert.equal(compat.status,200);assert.equal(compat.headers.get('x-modelbridge-compatibility'),'workbuddy-v1');
+    const strict=await send('/v1/chat/completions');assert.equal(strict.headers.get('x-modelbridge-compatibility'),null);
+    assert.deepEqual(profiles,['workbuddy','strict']);
+  }finally{await new Promise(resolve=>server.close(resolve));}
+});

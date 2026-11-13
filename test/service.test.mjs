@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { BridgeService } from '../src/service.mjs';
@@ -12,6 +12,28 @@ test('malformed chat input cannot leave an active gateway lock behind',async()=>
     await assert.rejects(()=>service.chat(body),/invalid_chat_request/);
     assert.equal(service.gatewayActive,0);
   }
+});
+test('compatibility probe performs real upstream work, discloses changes and preserves upstream failures',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'modelbridge-compat-'));let calls=0,fail=false;
+  const service=new BridgeService({dataDir:dir,fetcher:async(url,options)=>{
+    calls++;const body=JSON.parse(options.body);assert.equal(body.model,'chosen');assert.equal(body.max_output_tokens,undefined);
+    if(fail)return new Response('data: '+JSON.stringify({type:'response.output_text.delta',delta:'O'})+'\n\ndata: '+JSON.stringify({type:'response.failed',response:{error:{code:'quota_exceeded'}}})+'\n\n',{headers:{'Content-Type':'text/event-stream'}});
+    return new Response('data: '+JSON.stringify({type:'response.completed',response:{status:'completed',output:[{type:'message',content:[{type:'output_text',text:'OK'}]}]}})+'\n\n',{headers:{'Content-Type':'text/event-stream'}});
+  }});
+  service.models=[{slug:'chosen',selectable:true,declared:{}}];service.vault.active='test-account';service.accessToken=async()=> 'test-access';
+  const probe={model:'chosen',stream:true,max_tokens:1,messages:[{role:'user',content:'Reply with OK.'}]};
+  try{
+    await assert.rejects(()=>service.chat(probe),/unsupported_parameter:max_tokens/);assert.equal(calls,0);
+    const chunks=[];const result=await service.chat(probe,{compatibility:'workbuddy',onChunk:c=>chunks.push(c)});
+    assert.equal(calls,1);assert.equal(result.choices[0].message.content,'OK');
+    assert.equal(result.modelbridge.adjustments[0].code,'connection_probe_output_limit_not_forwarded');
+    assert.deepEqual(chunks[0].modelbridge,result.modelbridge);
+    fail=true;const failedChunks=[];await assert.rejects(()=>service.chat(probe,{compatibility:'workbuddy',onChunk:c=>failedChunks.push(c)}));assert.equal(calls,2);assert.deepEqual(failedChunks,[]);
+    const traces=(await readFile(join(dir,'gateway-trace.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+    assert.deepEqual(traces.map(t=>t.status),['failed','completed','failed']);
+    assert.equal(traces[2].adjustments[0].code,'connection_probe_output_limit_not_forwarded');
+    assert.equal(service.gatewayActive,0);
+  }finally{assert.ok(resolve(dir).startsWith(resolve(tmpdir())+'\\'));await rm(dir,{recursive:true});}
 });
 
 test('registration persists validated grant; refresh serializes; catalog and probes keep exact model', async () => {

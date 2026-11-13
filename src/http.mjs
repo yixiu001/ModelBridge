@@ -20,14 +20,17 @@ export function createApp({ service, controlKey, gatewayKey }) {
     const bearer = secureEqual(req.headers.authorization, `Bearer ${controlKey}`);
     const cookie = req.headers.cookie?.split(';').map(p => p.trim()).find(p => p.startsWith('mb_session='))?.slice(11);
     try {
-      if(url.pathname.startsWith('/v1/')) {
+      const workbuddy=url.pathname.startsWith('/workbuddy/v1/');
+      const apiPath=workbuddy?url.pathname.slice('/workbuddy'.length):url.pathname;
+      if(apiPath.startsWith('/v1/')) {
         if(!gatewayKey||!secureEqual(req.headers.authorization,`Bearer ${gatewayKey}`))return json(401,{error:{message:'ModelBridge inference key required',type:'authentication_error',code:'invalid_api_key'}});
         if(req.headers.origin&&req.headers.origin!==base)return json(403,{error:{message:'foreign origin rejected',code:'origin_rejected'}});
-        if(url.pathname==='/v1/models'&&req.method==='GET') {
+        if(workbuddy)res.setHeader('X-ModelBridge-Compatibility','workbuddy-v1');
+        if(apiPath==='/v1/models'&&req.method==='GET') {
           if(!service.models.length)await service.refreshCatalog();
           return json(200,{object:'list',data:service.models.filter(m=>m.selectable).map(m=>({id:m.slug,object:'model',created:0,owned_by:'openai'}))});
         }
-        if(url.pathname!=='/v1/chat/completions')return json(404,{error:{message:'unsupported route',code:'route_not_supported'}});
+        if(apiPath!=='/v1/chat/completions')return json(404,{error:{message:'unsupported route',code:'route_not_supported'}});
         if(req.method!=='POST')return json(405,{error:{message:'POST required',code:'method_not_allowed'}});
         if(!req.headers['content-type']?.startsWith('application/json'))return json(415,{error:{message:'JSON required',code:'invalid_content_type'}});
         const chunks=[];let bytes=0;
@@ -42,7 +45,7 @@ export function createApp({ service, controlKey, gatewayKey }) {
           res.write(`data: ${JSON.stringify(chunk)}\n\n`);
         };
         try{
-          const result=await service.chat(body,{signal:controller.signal,onChunk:body.stream?write:undefined});
+          const result=await service.chat(body,{signal:controller.signal,onChunk:body.stream?write:undefined,compatibility:workbuddy?'workbuddy':'strict'});
           if(body.stream){if(!streamStarted)write({choices:[]});res.end('data: [DONE]\n\n');}
           else json(200,result);
         }catch(error){
