@@ -1,3 +1,4 @@
+import {ClientsPage} from "./features/clients/ClientsPage.jsx";
 import {OverviewPage} from "./features/overview/OverviewPage.jsx";
 import {LogsPage} from "./features/logs/LogsPage.jsx";
 import {ModelsPage} from "./features/models/ModelsPage.jsx";
@@ -401,105 +402,7 @@ function Console() {
     ) : null,
     quota: state ? <QuotaPanel {...{ state, api, action, blocked }} /> : null,
     models: <ModelsPage {...{state,api,action,blocked,verify}}/>,
-    connection: (
-      <>
-        <Card title="客户端连接信息">
-          <Descriptions
-            bordered
-            column={1}
-            items={[
-              {
-                key: "b",
-                label: "服务地址",
-                children: (
-                  <Space wrap>
-                    <Text code>{location.origin}/workbuddy/v1</Text>
-                    <Button size="small" onClick={() => copy("baseUrl")}>
-                      复制地址
-                    </Button>
-                  </Space>
-                ),
-              },
-              {
-                key: "k",
-                label: "本机连接密钥",
-                children: (
-                  <Space>
-                    <Text>••••••••••••••••</Text>
-                    <Button size="small" onClick={() => copy("apiKey")}>
-                      复制密钥
-                    </Button>
-                  </Space>
-                ),
-              },
-              {
-                key: "p",
-                label: "接口协议",
-                children: "OpenAI 兼容 · Chat Completions / Responses",
-              },
-            ]}
-          />
-          <Paragraph className="spaced" type="secondary">
-            WorkBuddy 使用上述专用地址：连接探测放宽 1 token
-            上限，标题辅助请求的 none 映射到 low，转换会记录在日志中；普通 /v1
-            接口保持严格校验。
-          </Paragraph>
-        </Card>
-        <Card title="接入 WorkBuddy">
-          <Paragraph>
-            将工具验证通过的模型加入 WorkBuddy。已有 ModelBridge
-            条目会更新连接地址；当前账号不再可选的旧 ModelBridge
-            条目移入加密备份，其他模型配置保留。
-          </Paragraph>
-          <Space wrap>
-            <Button
-              type="primary"
-              disabled={
-                !ready ||
-                blocked ||
-                !models.some((m) => m.checks.tools.status === "passed")
-              }
-              onClick={() =>
-                modal.confirm({
-                  title: "更新 WorkBuddy 连接配置",
-                  content:
-                    "更新已通过工具验证的模型；将本机网关中不可用的旧 ModelBridge 条目移入加密备份，保留其他配置。更新后请刷新 WorkBuddy 窗口。",
-                  okText: "保存配置",
-                  cancelText: "取消",
-                  onOk: () =>
-                    action(
-                      () => api("workbuddy/configure", {}),
-                      "WorkBuddy 配置已保存",
-                    ),
-                })
-              }
-            >
-              配置 WorkBuddy
-            </Button>
-            <Button
-              disabled={!ready || blocked || !selected}
-              onClick={() => verify(selected, "text")}
-            >
-              测试连接
-            </Button>
-            <Select
-              aria-label="连接测试模型"
-              value={selected}
-              onChange={setSelected}
-              options={models
-                .filter((m) => m.selectable)
-                .map((m) => ({ value: m.slug, label: m.slug }))}
-            />
-          </Space>
-        </Card>
-        <Alert
-          showIcon
-          type="info"
-          title="启动顺序：ModelBridge → WorkBuddy"
-          description="只需保持 ModelBridge 运行，无需启动 CLIProxyAPI。"
-        />
-      </>
-    ),
+    connection: <ClientsPage {...{state,api,action,blocked,copy}}/>,
     tests: (
       <>
         <Card title="真实调用验证">

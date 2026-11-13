@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { safeError } from './service.mjs';
 import { StandaloneService } from './standalone-service.mjs';
 import { createApp } from './http.mjs';
+import {ClientAccess} from './client-access.mjs';
 import { loadVault, saveVault } from './vault.mjs';
 
 const dataDir = fileURLToPath(new URL('../.local/', import.meta.url));
@@ -18,7 +19,9 @@ try {
   const controlKey = randomBytes(32).toString('base64url');
   let gateway;
   try{gateway=await loadVault(join(dataDir,'gateway-key.dpapi'));}catch(error){if(error.code!=='ENOENT')throw error;gateway={key:'mb_'+randomBytes(32).toString('base64url')};await saveVault(join(dataDir,'gateway-key.dpapi'),gateway);}
-  server = createApp({ service, controlKey, gatewayKey:gateway.key });
+  const baseUrl=`http://127.0.0.1:${Number(process.env.MODELBRIDGE_PORT||43821)}`;
+  const clientAccess=new ClientAccess({dataDir,targetPath:join(process.env.USERPROFILE,'.workbuddy','models.json'),base:baseUrl,getModels:()=>service.status().models});await clientAccess.init();service.clientAccess=clientAccess;
+  server = createApp({ service, controlKey, gatewayKey:gateway.key, clientAccess });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(Number(process.env.MODELBRIDGE_PORT || 43821), '127.0.0.1', resolve); });
   const base = `http://127.0.0.1:${server.address().port}`;
   await writeFile(join(dataDir, 'control.json'), JSON.stringify({ base, key: controlKey, pid: process.pid }), { mode: 0o600 });

@@ -148,6 +148,7 @@ export class StandaloneService extends BridgeService {
           "ModelBridge 直接请求会员通道；指定模型不替换，失败不自动重试。",
       },
       catalog: this.catalogs[this.vault.active] || {stale:true,source:RESOURCE+"/models"},
+      clientAccess:this.clientAccess?.status(),
       activitySummary: this.activity?.summary({from:new Date(new Date().setHours(0,0,0,0)).toISOString()}),
       storageError:this.storageError,
       reportHistory: this.reportHistory.map(r=>({...r,current:r.context===this.context})),

@@ -5,9 +5,10 @@ import { secureEqual } from "./auth.mjs";
 import { safeError } from "./service.mjs";
 import { configureWorkBuddy } from "./client-config.mjs";
 
+import {localFetch} from "./local-client.mjs";
 import { classifyFailure } from "./diagnostics.mjs";
 const web = new URL("../dist/", import.meta.url);
-export function createApp({ service, controlKey, gatewayKey }) {
+export function createApp({ service, controlKey, gatewayKey, clientAccess }) {
   const session = randomBytes(32).toString("base64url");
   return createServer(async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -44,8 +45,7 @@ export function createApp({ service, controlKey, gatewayKey }) {
         : url.pathname;
       if (apiPath.startsWith("/v1/")) {
         if (
-          !gatewayKey ||
-          !secureEqual(req.headers.authorization, `Bearer ${gatewayKey}`)
+          clientAccess ? !clientAccess.accepts(req.headers.authorization?.startsWith('Bearer ')?req.headers.authorization.slice(7):undefined) : (!gatewayKey || !secureEqual(req.headers.authorization, `Bearer ${gatewayKey}`))
         )
           return json(401, {
             error: {
@@ -146,6 +146,7 @@ export function createApp({ service, controlKey, gatewayKey }) {
                   onChunk: body.stream ? write : undefined,
                   compatibility: workbuddy ? "workbuddy" : "strict",
                 });
+          if(clientAccess)await clientAccess.noteSuccessfulKey(req.headers.authorization?.slice(7)).catch(()=>{});
           if (body.stream) {
             if (!streamStarted) write({ choices: [] });
             res.end("data: [DONE]\n\n");
@@ -216,7 +217,7 @@ export function createApp({ service, controlKey, gatewayKey }) {
         return json(200, {
           baseUrl: base + "/workbuddy/v1",
           chatUrl: base + "/workbuddy/v1/chat/completions",
-          apiKey: gatewayKey,
+          apiKey: clientAccess?.copyKey() || gatewayKey,
         });
       if (req.method !== "POST") return json(405, { error: "POST required" });
       if ((!bearer || req.headers.origin) && req.headers.origin !== base)
@@ -231,9 +232,27 @@ export function createApp({ service, controlKey, gatewayKey }) {
         chunks.push(chunk);
       }
       const data = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+      if(url.pathname.startsWith('/api/client-access/') && clientAccess){
+        service.idle();
+        const op=url.pathname.slice('/api/client-access/'.length);
+        if(op==='status')return json(200,clientAccess.status());
+        if(op==='preview')return json(200,await clientAccess.preview());
+        if(op==='begin')return json(200,await clientAccess.begin());
+        if(op==='apply')return json(200,await clientAccess.apply(data));
+        if(op==='rollback')return json(200,await clientAccess.rollback(data.rotationId));
+        if(op==='restore')return json(200,await clientAccess.restore());
+        if(op==='complete')return json(200,await clientAccess.complete(data.rotationId));
+        if(op==='verify'){
+          const key=clientAccess.copyKey();
+          const check=await localFetch(base+'/v1/models',{headers:{Authorization:'Bearer '+key},signal:AbortSignal.timeout(10000)});
+          await check.text();if(!check.ok)throw new Error('新连接密钥验证失败');
+          await clientAccess.noteSuccessfulKey(key);return json(200,{verified:true,message:'连接鉴权和模型目录读取成功；工具调用须另行验证'});
+        }
+      }
       if (url.pathname === "/api/workbuddy/configure" && service.direct) {
         if (service.job || service.gatewayActive || !service.reachable)
           return json(409, { error: "请等待操作结束，并确认引擎已连接" });
+        if(clientAccess){const preview=await clientAccess.preview();return json(200,await clientAccess.apply({expectedClientRevision:preview.revision,rotationId:clientAccess.status().rotation?.id}));}
         return json(
           200,
           await configureWorkBuddy({ service, base, key: gatewayKey }),
