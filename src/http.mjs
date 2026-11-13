@@ -239,6 +239,9 @@ export function createApp({ service, controlKey, gatewayKey }) {
           await configureWorkBuddy({ service, base, key: gatewayKey }),
         );
       }
+      if (url.pathname === "/api/activity/read" && service.activity) return json(200,service.activity.query(data));
+      if (url.pathname === "/api/activity/summary" && service.activity) return json(200,service.activity.summary(data));
+      if (url.pathname === "/api/activity/export" && service.activity) return json(200,service.activity.export(data));
       if (url.pathname === "/api/quota-jobs/start" && service.quotaJobs) return json(200,await service.quotaJobs.start(data));
       if (url.pathname === "/api/quota-jobs/read" && service.quotaJobs) return json(200,service.quotaJobs.read(data.jobId));
       if (url.pathname === "/api/quota-jobs/cancel" && service.quotaJobs) return json(200,service.quotaJobs.cancel(data.jobId));

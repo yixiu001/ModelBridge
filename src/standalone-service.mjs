@@ -30,6 +30,7 @@ import { classifyFailure, normalizedUsage } from "./diagnostics.mjs";
 import {projectAccountState} from "./account-state.mjs";
 import {QuotaJobs} from "./quota-jobs.mjs";
 import {catalogRevision, diffCatalog, previewModelRules, verificationKey} from "./model-catalog.mjs";
+import {ActivityStore} from "./activity-store.mjs";
 const hash = (v) =>
   createHash("sha256").update(JSON.stringify(v)).digest("hex");
 const fail = (message, code = "invalid_input", httpStatus = 400) => {
@@ -81,7 +82,10 @@ export class StandaloneService extends BridgeService {
     this.quotas=new Map(Object.entries(await this.read('quota-snapshots.json',{})));
     this.quotaJobs.hydrate(await this.read('quota-jobs.json',[]));
     this.catalogs=await this.read("catalog-snapshots.json",{});
+    this.activity=new ActivityStore(this.dataDir,()=>this.prefs);await this.activity.init();
+    if(!(await this.read('activity-import.json',null))){for(const r of this.traffic)await this.activity.append(r);await this.save('activity-import.json',{completedAt:new Date().toISOString()});}
     this.initialized=true;
+    await this.logEvent('service_started');
     await this.loadReports();
     if (this.account && !this.account.disabled)
       await this.refreshCatalog().catch((e) => {
@@ -144,6 +148,8 @@ export class StandaloneService extends BridgeService {
           "ModelBridge 直接请求会员通道；指定模型不替换，失败不自动重试。",
       },
       catalog: this.catalogs[this.vault.active] || {stale:true,source:RESOURCE+"/models"},
+      activitySummary: this.activity?.summary({from:new Date(new Date().setHours(0,0,0,0)).toISOString()}),
+      storageError:this.storageError,
       reportHistory: this.reportHistory.map(r=>({...r,current:r.context===this.context})),
       quotaJob: this.quotaJobs.read(),
       accounts: Object.entries(this.vault.accounts).map(([key, a]) => ({
@@ -672,6 +678,7 @@ export class StandaloneService extends BridgeService {
       const snapshot = await saveSettings(this.dataDir, {revision, values:prefs});
       this.prefs = snapshot.values; this.timeoutSeconds = this.prefs.timeoutSeconds;
       this.applyRules(); await this.loadReports();
+      await this.logEvent("settings_saved");
       return this.settings();
     } finally { this.mutating = false; }
   }
@@ -759,6 +766,12 @@ export class StandaloneService extends BridgeService {
     );
     error.modelbridgeRecorded = true;
   }
+  async logEvent(event){
+    if(!this.activity)return;
+    const now=new Date().toISOString();
+    try{await this.activity.append({id:randomUUID(),kind:'system',event,startedAt:now,finishedAt:now,httpStatus:200,status:'forwarded',accountKey:this.vault.active});}
+    catch{this.storageError='运行记录保存失败，请检查磁盘与目录权限';}
+  }
   async recordTrace(trace, body) {
     const entry = {
       id: trace.id || randomUUID(),
@@ -793,8 +806,10 @@ export class StandaloneService extends BridgeService {
     };
     this.traffic.push(entry);
     this.traffic = this.traffic.slice(-100);
-    if (this.prefs.loggingToFile)
-      await this.save("direct-traffic.json", this.traffic);
+    if(this.activity){
+      try{await this.activity.append(entry);this.storageError=null;}
+      catch{this.storageError='请求摘要保存失败，请检查磁盘与目录权限';}
+    } else if (this.prefs.loggingToFile) await this.save("direct-traffic.json", this.traffic);
   }
   async chat(body, options = {}) {
     if (

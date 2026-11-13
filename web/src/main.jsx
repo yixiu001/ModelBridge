@@ -1,3 +1,5 @@
+import {OverviewPage} from "./features/overview/OverviewPage.jsx";
+import {LogsPage} from "./features/logs/LogsPage.jsx";
 import {ModelsPage} from "./features/models/ModelsPage.jsx";
 import { AccountsPanel, QuotaPanel } from "./account-panels.jsx";
 import {
@@ -552,12 +554,8 @@ function Console() {
     settings: <SettingsPanel {...{ api, action, blocked }} />,
   };
   if (state) {
-    content.overview = (
-      <>
-        {content.overview}
-        <OverviewMetrics state={state} />
-      </>
-    );
+    content.overview = <OverviewPage state={state}/>;
+    content.logs = <LogsPage {...{state,api,action}}/>;
     content.models = (
       <>
         {content.models}

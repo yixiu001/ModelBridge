@@ -1,0 +1,20 @@
+import React,{useState,useEffect,useRef} from 'react';
+import {Alert,Button,Card,Descriptions,Drawer,Input,Select,Space,Table,Tabs,Tag,Typography} from 'antd';
+import {date,download} from '../../console-utils.mjs';
+const {Text}=Typography;
+export function LogsPage({state,api,action}){
+ const [items,setItems]=useState([]),[cursor,setCursor]=useState(null),[error,setError]=useState(''),[paused,setPaused]=useState(false),[detail,setDetail]=useState(null),[kind,setKind]=useState('request'),[status,setStatus]=useState('all'),[model,setModel]=useState(''),[source,setSource]=useState('all'),[hours,setHours]=useState(24);
+ const generation=useRef(0),filters={kind,status,model,source};
+ const query=()=>({from:new Date(Date.now()-hours*3600000).toISOString(),filters});
+ const read=async(more=false)=>{const gen=++generation.current;try{const r=await api('activity/read',{...query(),limit:100,cursor:more?cursor:undefined});if(gen!==generation.current)return;setItems(old=>more?[...old,...r.items]:r.items);setCursor(r.nextCursor);setError(r.cursorExpired?'历史记录已因保留策略变化，请刷新': '');}catch{if(gen===generation.current)setError('日志读取失败，请重试');}};
+ useEffect(()=>{if(!paused)read();return()=>{generation.current++;};},[paused,kind,status,model,source,hours]);
+ useEffect(()=>{if(!paused){const timer=setInterval(()=>read(),5000);return()=>clearInterval(timer);}},[paused,kind,status,model,source,hours]);
+ return <Card title="运行日志" extra={<Space wrap><Button onClick={()=>setPaused(v=>!v)}>{paused?'继续刷新':'暂停显示'}</Button><Button onClick={()=>read()}>刷新</Button><Button onClick={()=>action(async()=>download('modelbridge-diagnostics.json',await api('activity/export',query())))}>导出脱敏诊断</Button></Space>}>
+  <Tabs activeKey={kind} onChange={setKind} items={[{key:'request',label:'模型请求'},{key:'system',label:'系统事件'}]}/>
+  <Space wrap><Select aria-label="日志时间" value={hours} onChange={setHours} options={[{value:1,label:'最近1小时'},{value:24,label:'最近24小时'},{value:168,label:'最近7天'}]}/><Select aria-label="日志结果" value={status} onChange={setStatus} options={[{value:'all',label:'全部结果'},{value:'forwarded',label:'成功'},{value:'failed',label:'失败'},{value:'cancelled',label:'取消'}]}/><Input placeholder="精确模型ID筛选" value={model} onChange={e=>setModel(e.target.value)}/><Select aria-label="错误来源" value={source} onChange={setSource} options={[{value:'all',label:'全部来源'},{value:'client',label:'客户端参数'},{value:'upstream',label:'官方上游'},{value:'network',label:'网络'},{value:'gateway',label:'本机服务'}]}/></Space>
+  {error&&<Alert className="spaced" type="warning" title={error}/>} {state?.storageError&&<Alert type="error" title={state.storageError}/>}
+  <Table className="spaced" rowKey="id" scroll={{x:900}} pagination={false} dataSource={items} columns={[{title:'时间',dataIndex:'finishedAt',render:date},{title:'账号',render:(_,r)=>state.accounts.find(a=>a.key===r.accountKey)?.note||state.accounts.find(a=>a.key===r.accountKey)?.label||'—'},{title:kind==='system'?'事件':'模型',render:(_,r)=>kind==='system'?r.event:r.model},{title:'结果',render:(_,r)=><Tag color={r.status==='forwarded'?'success':r.status==='failed'?'error':'default'}>{r.status==='forwarded'?'成功':r.status==='cancelled'?'已取消':'失败'} · {r.httpStatus}</Tag>},{title:'错误类别',render:(_,r)=>r.failure?.category||'—'},{title:'操作',render:(_,r)=><Button onClick={()=>setDetail(r)}>详情</Button>}]}/>
+  <Button className="spaced" disabled={!cursor} onClick={()=>{setPaused(true);read(true);}}>加载更早记录</Button>
+  <Drawer title="请求诊断" open={!!detail} onClose={()=>setDetail(null)} size="large">{detail&&<><Descriptions column={1} items={[{key:'id',label:'请求编号',children:<Text copyable>{detail.id}</Text>},{key:'model',label:'指定 / 实际模型',children:`${detail.requestedModel||'—'} / ${detail.effectiveModel||'—'}`},{key:'source',label:'错误来源',children:detail.failure?.source||'无'},{key:'field',label:'相关字段',children:detail.failure?.param||'未返回'},{key:'usage',label:'已知token / 未返回',children:detail.usage.totalTokens??'未返回'}]}/><Alert className="spaced" type="info" title="不会自动重试或切换模型" description="参数问题请对照模型能力；授权问题请到账号详情恢复；限流不等于余额为零。"/><pre className="config-preview">{JSON.stringify(detail,null,2)}</pre></>}</Drawer>
+ </Card>;
+}
