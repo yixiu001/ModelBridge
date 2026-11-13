@@ -162,7 +162,9 @@ test("model rules enforce exact aliases, stale forms and report context isolatio
 test("settings persist, reject stale writes, and guard active requests", async (t) => {
   const { s, dir } = await setup(t);
   const old = s.settings();
+  s.lastError = {code: 'stale_config', message: 'previous settings conflict'};
   await s.updateSettings({ ...old, timeoutSeconds: 60 });
+  assert.equal(s.lastError, null, 'successful settings recovery clears the resolved conflict');
   assert.equal(s.timeoutSeconds, 60);
   assert.equal(
     JSON.parse(await readFile(join(dir, "settings.json"), "utf8"))

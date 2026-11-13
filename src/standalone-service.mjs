@@ -681,7 +681,9 @@ export class StandaloneService extends BridgeService {
       const snapshot = await restoreSettings(this.dataDir, data);
       this.prefs = snapshot.values; this.timeoutSeconds = this.prefs.timeoutSeconds;
       if(this.initialized)await this.activity.expire().catch(()=>{this.storageError="日志清理失败；配置已生效，请检查本机目录权限";});
-      this.applyRules(); await this.loadReports(); return snapshot;
+      this.applyRules(); await this.loadReports();
+      if (this.lastError?.code === 'stale_config') this.lastError = null;
+      return snapshot;
     } finally { this.mutating = false; }
   }
   async updateSettings(data) {
@@ -698,6 +700,7 @@ export class StandaloneService extends BridgeService {
       if(this.initialized)await this.activity.expire().catch(()=>{this.storageError="日志清理失败；配置已生效，请检查本机目录权限";});
       this.applyRules(); await this.loadReports();
       await this.logEvent("settings_saved");
+      if (this.lastError?.code === 'stale_config') this.lastError = null;
       return this.settings();
     } finally { this.mutating = false; }
   }
