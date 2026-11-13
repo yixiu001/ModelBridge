@@ -2,7 +2,8 @@ import { mkdir, open, writeFile, unlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { BridgeService, safeError } from './service.mjs';
+import { safeError } from './service.mjs';
+import { EngineService } from './engine-service.mjs';
 import { createApp } from './http.mjs';
 import { loadVault, saveVault } from './vault.mjs';
 
@@ -13,7 +14,7 @@ let lock, server;
 try {
   lock = await open(lockPath, 'wx');
   await lock.writeFile(String(process.pid));
-  const service = new BridgeService({ dataDir }); await service.init();
+  const service = new EngineService({ dataDir }); await service.init();
   const controlKey = randomBytes(32).toString('base64url');
   let gateway;
   try{gateway=await loadVault(join(dataDir,'gateway-key.dpapi'));}catch(error){if(error.code!=='ENOENT')throw error;gateway={key:'mb_'+randomBytes(32).toString('base64url')};await saveVault(join(dataDir,'gateway-key.dpapi'),gateway);}

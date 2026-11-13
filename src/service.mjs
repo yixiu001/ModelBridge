@@ -63,7 +63,7 @@ export class BridgeService {
       }), catalogAt: this.catalogAt, reports: this.reports,
       busy: this.job ? { model: this.job.model, kind: this.job.kind } : null,
       lastError: this.lastError,
-      limits: '当前会员通道不支持托管 MCP、图像生成、Code Interpreter、音视频输入。目录发现不代表能力验证。WorkBuddy 尚未联调。',
+      limits: '客户端 MCP 工具由 WorkBuddy 等调用软件执行，不等于会员通道托管 MCP。目录发现不代表能力验证；具体范围见项目验收记录。',
     };
   }
   startLogin(redirectUri, newAccount = false) {
@@ -176,7 +176,8 @@ export class BridgeService {
       const scope=this.vault.active;
       const token=await this.accessToken();
       const bounded=AbortSignal.any([...(signal?[signal]:[]),AbortSignal.timeout(180_000)]);
-      const adapter=new ChatAdapter({catalog:this.models,scope,states:this.toolStates,
+      const adapter=new ChatAdapter({catalog:this.models,scope,states:this.toolStates,historyProfile:compatibility,
+        onHistoryReference:count=>{trace.historyReferences=(trace.historyReferences||0)+count;},
         persist:async()=>{
           const snapshot=structuredClone([...this.toolStates]);
           this.stateWrite=this.stateWrite.catch(()=>{}).then(()=>saveVault(join(this.dataDir,'tool-states.dpapi'),snapshot));

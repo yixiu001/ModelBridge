@@ -1,9 +1,26 @@
 {
   "name": "model-bridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "模型桥 ModelBridge — local ChatGPT plan integration verification",
-  "engines": { "node": ">=24.0.0" },
-  "scripts": { "start": "node --use-env-proxy src/server.mjs", "test": "node --test", "status": "node scripts/control.mjs status" }
+  "description": "ModelBridge — Codex OAuth console powered by CLIProxyAPI",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "build": "vite build",
+    "dev": "vite --host 127.0.0.1",
+    "test": "node --test test/*.test.mjs",
+    "status": "node scripts/control.mjs status"
+  },
+  "dependencies": {
+    "antd": "6.7.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "vite": "8.3.8",
+    "@vitejs/plugin-react": "6.3.0"
+  }
 }

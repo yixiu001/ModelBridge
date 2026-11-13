@@ -1,31 +1,23 @@
-import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { loadVault,saveVault } from '../src/vault.mjs';
-import { buildWorkBuddyModel } from '../src/workbuddy-config.mjs';
-
-const target=process.argv[2];
-const compatibility=process.argv[3]==='--workbuddy-compat';
-if(process.argv.length>4||process.argv[3]&&!compatibility)throw new Error('Unknown option; use --workbuddy-compat only after accepting its documented deviations');
-if(!target||resolve(target)!==resolve(process.env.USERPROFILE,'.workbuddy','models.json'))throw new Error('Expected the verified WorkBuddy models.json path');
-const local=fileURLToPath(new URL('../.local/',import.meta.url));
-const control=JSON.parse(await readFile(join(local,'control.json'),'utf8'));
-const response=await fetch(control.base+'/api/status',{headers:{Authorization:`Bearer ${control.key}`}});
-if(!response.ok)throw new Error('ModelBridge is not ready');
-const state=await response.json();
-if(!state.account.planEnabled||!state.models.length)throw new Error('Refresh authorized model catalog first');
-const gateway=await loadVault(join(local,'gateway-key.dpapi'));
-const original=await readFile(target,'utf8');const models=JSON.parse(original);
-if(!Array.isArray(models))throw new Error('Unrecognized WorkBuddy configuration structure');
-const strictUrl=control.base+'/v1/chat/completions';
-const compatibilityUrl=control.base+'/workbuddy/v1/chat/completions';
-const url=compatibility?compatibilityUrl:strictUrl;
-const candidates=state.models.filter(m=>m.selectable&&m.checks?.tools?.status==='passed');
-if(!candidates.length)throw new Error('No models with a completed basic tool test');
-for(const m of candidates)if(models.some(old=>old.id===m.slug&&(![strictUrl,compatibilityUrl].includes(old.url)||old.apiKey!==gateway.key)))throw new Error('Existing model ID conflict; no configuration modified');
-await saveVault(join(local,`workbuddy-models-backup-${Date.now()}.dpapi`),{path:target,content:original});
-const next=models.filter(old=>!candidates.some(m=>m.slug===old.id));
-for(const m of candidates)next.push({...models.find(old=>old.id===m.slug),...buildWorkBuddyModel(m,{url,key:gateway.key})});
-await mkdir(resolve(target,'..'),{recursive:true});
-const temporary=target+'.modelbridge.tmp';await writeFile(temporary,JSON.stringify(next,null,2),{flag:'wx',mode:0o600});await rename(temporary,target);
-console.log(JSON.stringify({configured:candidates.map(m=>m.slug),endpoint:url,compatibilityProfile:compatibility?'workbuddy (probe limit omitted; title none maps to low)':'strict',preservedOtherModels:models.length-candidates.filter(m=>models.some(old=>old.id===m.slug)).length,backup:'Encrypted backup saved in ModelBridge .local; no credentials printed'}));
+import { readFile } from "node:fs/promises";
+import { localFetch } from "../src/engine-client.mjs";
+if (process.argv.length > 2)
+  throw new Error(
+    "Use node scripts/configure-workbuddy.mjs; current engine uses one transparent endpoint",
+  );
+const c = JSON.parse(
+  await readFile(new URL("../.local/control.json", import.meta.url), "utf8"),
+);
+const r = await localFetch(c.base + "/api/workbuddy/configure", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer " + c.key,
+    "content-type": "application/json",
+  },
+  body: "{}",
+});
+const result = await r.json();
+if (!r.ok)
+  throw new Error(
+    result.error?.message || result.error || "Configuration failed",
+  );
+console.log(JSON.stringify(result));

@@ -5,7 +5,8 @@ $controlPath = Join-Path $dataPath 'control.json'
 $control = Get-Content -LiteralPath $controlPath -Raw | ConvertFrom-Json
 $runtime = Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$control.pid)
 if ($runtime) {
-  if ($runtime.Name -ne 'node.exe' -or $runtime.CommandLine -notmatch 'src[\\/]server\.mjs') { throw 'PID is not the expected ModelBridge server; refusing to stop it.' }
+  $expectedEntry = Join-Path $projectRoot 'src\server.mjs'
+  if ($runtime.Name -ne 'node.exe' -or $runtime.CommandLine.Replace('/','\') -notlike ('*' + $expectedEntry + '*')) { throw 'PID is not the expected ModelBridge server; refusing to stop it.' }
   Stop-Process -Id $runtime.ProcessId
 }
 foreach ($name in @('runtime.lock','control.json')) {

@@ -23,11 +23,38 @@ function canonical(value) {
   if(value && typeof value==='object') return Object.fromEntries(Object.keys(value).sort().filter(k=>value[k]!==undefined).map(k=>[k,canonical(value[k])]));
   return value;
 }
-function fingerprint(messages) {
+function normalizedHistory(messages) {
   // System instructions may legitimately change between turns. User/assistant/tool
   // history and the unguessable call IDs bind state to the actual conversation.
-  const normalized=messages.filter(m=>!['system','developer'].includes(m.role)).map(m=>({role:m.role,content:m.content||null,tool_calls:m.tool_calls,tool_call_id:m.tool_call_id}));
-  return createHash('sha256').update(JSON.stringify(canonical(normalized))).digest('hex');
+  return messages.filter(m=>!['system','developer'].includes(m.role)).map(m=>({role:m.role,content:m.content||null,tool_calls:m.tool_calls,tool_call_id:m.tool_call_id}));
+}
+const digest=value=>createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
+const fingerprint=messages=>digest(normalizedHistory(messages));
+function bindHistory(messages) {
+  return normalizedHistory(messages).map(message=>{
+    const binding={digest:digest(message)};
+    if(message.role==='tool'&&typeof message.content==='string'&&Buffer.byteLength(message.content)>2048){
+      binding.externalized={identity:digest({...message,content:null}),callId:message.tool_call_id,sizeKB:(Buffer.byteLength(message.content)/1024).toFixed(1),preview:digest(Buffer.from(message.content).subarray(0,2048).toString('utf8'))};
+    }
+    return binding;
+  });
+}
+function matchHistoryReference(messages,bindings) {
+  const current=normalizedHistory(messages);let references=0;
+  if(!bindings||bindings.length!==current.length)return 0;
+  for(let i=0;i<current.length;i++){
+    const message=current[i],binding=bindings[i];if(digest(message)===binding.digest)continue;
+    const original=binding.externalized;
+    if(!original||digest({...message,content:null})!==original.identity||typeof message.content!=='string')return 0;
+    // Recognize only the observed WorkBuddy projection. Never read the supplied
+    // path or replace current client input with the old full result.
+    const match=/^<persisted-output>\nOutput too large \((\d+\.\d)KB\)\. Full output saved to: ([^\r\n]+)\n\nPreview \(first 2048 bytes\):\n([\s\S]*)\n\.\.\.\n<\/persisted-output>$/.exec(message.content);
+    if(!match||match[1]!==original.sizeKB||digest(match[3])!==original.preview)return 0;
+    const path=match[2].replaceAll('\\','/');
+    if(!/^[A-Za-z]:\/Users\/[^/]+\/\.workbuddy\/projects\/[^/]+\/[0-9a-f-]{36}\/tool-results\/[^/]+\.txt$/.test(path)||path.split('/').at(-1)!==original.callId+'.txt'||path.split('/').some(part=>part==='.'||part==='..'))return 0;
+    references++;
+  }
+  return references;
 }
 function contentParts(content,role,model) {
   if(content===null || content===undefined) return [];
@@ -44,7 +71,7 @@ function contentParts(content,role,model) {
   });
 }
 export class ChatAdapter {
-  constructor({catalog,scope,states,request,persist=async()=>{}}) {Object.assign(this,{catalog,scope,states,request,persist});}
+  constructor({catalog,scope,states,request,persist=async()=>{},historyProfile='strict',onHistoryReference=()=>{}}) {Object.assign(this,{catalog,scope,states,request,persist,historyProfile,onHistoryReference});}
   async complete(body,{signal,onChunk}={}) {
     const model=requireModel(this.catalog,body.model);
     const allowed=new Set(['model','messages','tools','tool_choice','stream','stream_options','parallel_tool_calls','reasoning_effort']);
@@ -76,7 +103,12 @@ export class ChatAdapter {
         if(!entry)fail('tool_state_missing:restart_or_expired');
         if(entry.scope!==this.scope||entry.model!==body.model)fail('state_scope_mismatch');
         if(entry.expiresAt<Date.now())fail('tool_state_expired');
-        if(entry.prefix!==fingerprint(body.messages.slice(0,i)))fail('history_mismatch');
+        const prefix=body.messages.slice(0,i);
+        if(entry.prefix!==fingerprint(prefix)){
+          const references=this.historyProfile==='workbuddy'?matchHistoryReference(prefix,entry.historyBindings):0;
+          if(!references)fail('history_mismatch');
+          this.onHistoryReference(references);
+        }
         if(JSON.stringify(canonical(message.tool_calls))!==JSON.stringify(canonical(entry.calls))||(message.content||null)!==(entry.content||null))fail('tool_call_mismatch');
         input.push(...structuredClone(entry.output));
         entry.calls.forEach((call,index)=>pending.set(call.id,entry.originalCalls[index].call_id));
@@ -127,6 +159,7 @@ export class ChatAdapter {
     const text=outputText(response);
     if(calls.length) {
       const entry={scope:this.scope,model:body.model,prefix:fingerprint(body.messages),output:response.output,originalCalls,calls,content:text||null,expiresAt:Date.now()+24*3600_000};
+      if(this.historyProfile==='workbuddy')entry.historyBindings=bindHistory(body.messages);
       for(const call of calls)this.states.set(call.id,entry);
       for(const [key,state] of this.states)if(state.expiresAt<Date.now())this.states.delete(key);
       if(this.states.size>5000)fail('tool_state_capacity_reached');

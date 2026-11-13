@@ -1,9 +1,12 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>模型桥 ModelBridge · 接入验证</title><link rel="stylesheet" href="/style.css"><script src="/app.js" type="module"></script></head>
-<body><main>
-<header><p class="eyebrow">MODELBRIDGE / 01</p><h1>模型桥 <span>接入验证</span></h1><p>连接你的 ChatGPT 账号，发现全部可用模型，验证真实的工具调用。</p></header>
-<section><h2>会员授权</h2><p id="account">正在读取本地状态…</p><div class="actions"><button id="login" data-oai-siwc-button>Continue with ChatGPT</button><button id="new-account" class="secondary">添加其他账号</button><select id="accounts" aria-label="已保存账号"></select></div><p class="note">在 OpenAI 官方页面登录并确认授权。凭据使用当前 Windows 账户加密保存，不发送到 GitHub。</p><a href="https://chatgpt.com/settings/usage" target="_blank" rel="noreferrer">查看 ChatGPT 用量设置 ↗</a></section>
-<section><div class="section-title"><h2>账号模型目录</h2><button id="refresh" class="secondary">刷新目录</button></div><p id="catalog-info">登录后可获取完整账号目录。</p><div class="table-scroll"><table><thead><tr><th>模型</th><th>目录状态</th><th>验证结果</th><th>操作</th></tr></thead><tbody id="models"></tbody></table></div><p class="note">新发现的模型初始为“未验证”。每次测试使用你选择的确切模型，不自动替换；文本与工具测试会消耗少量会员用量。</p></section>
-<section><div class="section-title"><h2>验证记录</h2><button id="cancel" class="secondary">取消当前测试</button></div><p id="busy">当前没有运行中的测试。</p><pre id="error" role="alert"></pre><div id="reports"></div></section>
-<footer><p id="limits"></p><p>此页面测试使用本机无副作用回显。已提供 WorkBuddy 兼容接口；客户端任务中的文件等工具由 WorkBuddy 按其权限执行。</p></footer>
-</main></body></html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>ModelBridge · Codex 控制台</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
