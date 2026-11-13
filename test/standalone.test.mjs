@@ -10,6 +10,24 @@ const model = {
   selectable: true,
   declared: { supported_reasoning_levels: [{ effort: "low" }] },
 };
+test('invalid tool history is classified as client validation before inference',async t=>{
+ const {s,calls}=await setup(t);await assert.rejects(()=>s.chat({model:'chosen',messages:[{role:'tool',tool_call_id:'missing',content:'x'}]}),e=>e.details.source==='client'&&e.details.category==='validation');assert.equal(calls.length,0);
+});
+test('concurrent grant updates merge inference rotation and quota failure',async t=>{
+ const {s}=await setup(t);s.vault.accounts.a.quotaAuth={access_token:'quota',expiresAt:0};
+ await Promise.all([s.updateGrant('a','inference',{access_token:'rotated',refresh_token:'rotated-refresh'}),s.updateGrant('a','quota',{refreshError:{httpStatus:401,code:'invalid_grant'}})]);
+ assert.equal(s.vault.accounts.a.access_token,'rotated');assert.equal(s.vault.accounts.a.refresh_token,'rotated-refresh');assert.equal(s.vault.accounts.a.quotaAuth.refreshError.httpStatus,401);
+ const {loadVault}=await import('../src/vault.mjs');const disk=await loadVault(s.vaultPath);assert.deepEqual(disk,s.vault);
+});
+test('catalog failure after a successful manual refresh does not invalidate the new grant',async t=>{
+ const {s}=await setup(t);s.json=async url=>{if(url.endsWith('/models'))throw Object.assign(new Error('directory unavailable'),{details:{httpStatus:502}});return {access_token:'renewed',refresh_token:'renewed-refresh',token_type:'Bearer',expires_in:3600};};
+ await assert.rejects(()=>s.accountAction('a','refresh'));assert.equal(s.vault.accounts.a.access_token,'renewed');assert.equal(s.vault.accounts.a.refreshError,null);
+});
+test('log cleanup failure cannot leave saved settings and active model rules inconsistent',async t=>{
+ const {s}=await setup(t);s.initialized=true;s.activity={expire:async()=>{throw new Error('disk denied');},append:async()=>{}};
+ const values={...s.prefs,excluded:['chosen']};await s.updateSettings({revision:s.settingsDocument().revision,values});
+ assert.equal(s.models.find(m=>m.slug==='chosen').selectable,false);assert.match(s.storageError,/日志/);assert.equal(s.settingsDocument().values.excluded[0],'chosen');
+});
 test('system information and manual release checks expose no environment credentials',async t=>{
  const {s}=await setup(t);const info=s.systemInfo();assert.equal(info.mode,'standalone');assert.ok(info.nodeVersion);assert.doesNotMatch(JSON.stringify(info),/SECRET_TOKEN/);
  s.fetcher=async url=>{assert.equal(url,'https://api.github.com/repos/yixiu001/ModelBridge/releases/latest');return Response.json({tag_name:'v0.4.0',html_url:'https://github.com/yixiu001/ModelBridge/releases/tag/v0.4.0',body:'PRIVATE'});};

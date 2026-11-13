@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mergeWorkBuddyModels } from "../src/client-config.mjs";
+
+test('rotation updates retained owned entries even while verification is pending',()=>{
+ const url='http://127.0.0.1:43821/workbuddy/v1/chat/completions';
+ const existing=[{id:'pending',name:'ModelBridge · Pending',url,apiKey:'OLD'},{id:'personal',name:'Personal',url:'https://example.test',apiKey:'FOREIGN'}];
+ const result=mergeWorkBuddyModels(existing,[{slug:'proven',selectable:true,displayName:'Proven',checks:{tools:{status:'passed'}},declared:{}},{slug:'pending',selectable:true}],{url,key:'NEW',archiveUnavailable:true});
+ assert.equal(result.find(x=>x.id==='pending').apiKey,'NEW');assert.equal(result.find(x=>x.id==='personal').apiKey,'FOREIGN');assert.equal(existing[0].apiKey,'OLD');
+});
 test("only unavailable ModelBridge entries on this gateway are archived", () => {
   const url = "http://127.0.0.1:43821/workbuddy/v1/chat/completions";
   const own = {

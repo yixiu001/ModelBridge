@@ -32,6 +32,11 @@ export function mergeWorkBuddyModels(
         !models.some((m) => m.slug === x.id && m.selectable)
       ),
   );
+  for(let i=0;i<result.length;i++){
+    const entry=result[i];
+    if(/^ModelBridge · /.test(entry.name||'')&&allowed.slice(0,2).includes(entry.url))
+      result[i]={...entry,apiKey:key};
+  }
   for (const m of selected) {
     const index = result.findIndex((x) => x.id === m.slug),
       old = result[index];

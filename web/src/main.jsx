@@ -222,6 +222,7 @@ function Console() {
       settingsForm.setFieldsValue(result);
     }
   }
+  const busy = state?.busy && <Alert type="info" showIcon title={`${kinds[state.busy.kind]}验证进行中 · ${state.busy.model}`} description={`当前进度：${state.busy.progress||0}；测试使用会员用量，请保持服务运行。`} action={<Button onClick={()=>action(()=>api('cancel',{}))}>取消验证</Button>}/>;
   const content = {
     overview: state ? <OverviewPage state={state}/> : null,
     accounts: state ? (

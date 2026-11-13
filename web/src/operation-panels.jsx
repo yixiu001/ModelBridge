@@ -104,7 +104,12 @@ export function RulesPanel({ api, action, blocked }) {
             }),
           "模型规则已保存",
         );
-        if (r) adopt(r);
+        if(r){const latest=draftCache.get('rules');setRules(r);
+          if(kind==='excluded')setExcluded(r.excluded.join('\n'));else setAliases(r.aliases);
+          // The other tab's uncommitted draft remains intact.
+          if(kind==='excluded'&&latest)setAliases(latest.aliases);
+          if(kind==='aliases'&&latest)setExcluded(latest.excluded);
+        }
       },
     });
   };

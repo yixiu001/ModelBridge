@@ -7,7 +7,7 @@ import {mergeWorkBuddyModels} from './client-config.mjs';
 const digest=s=>createHash('sha256').update(s).digest('hex');
 const fail=(message,code='client_config_conflict')=>{throw Object.assign(new Error(message),{details:{code,httpStatus:409}});};
 export class ClientAccess {
- constructor({dataDir,targetPath,base,getModels}){Object.assign(this,{dataDir,targetPath,base,getModels});this.path=join(dataDir,'gateway-key.dpapi');}
+ constructor({dataDir,targetPath,base,getModels,getContext=()=>null}){Object.assign(this,{dataDir,targetPath,base,getModels,getContext});this.path=join(dataDir,'gateway-key.dpapi');}
  async init(){this.data=await loadVault(this.path);if(typeof this.data.key!=='string'||!this.data.key)throw new Error('连接密钥文件无效');}
  status(){const r=this.data.rotation;return {rotation:r?{id:r.id,stage:r.stage,verified:!!r.verifiedAt,createdAt:r.createdAt}:null,lastBackup:this.data.lastBackup?{id:this.data.lastBackup.id}:null};}
  copyKey(){return this.data.rotation?.newKey||this.data.key;}
@@ -17,15 +17,15 @@ export class ClientAccess {
  async prepare(){
   const original=await readFile(this.targetPath,'utf8');
   const next=mergeWorkBuddyModels(JSON.parse(original),this.getModels(),{url:this.base+'/workbuddy/v1/chat/completions',key:this.copyKey(),archiveUnavailable:true});
-  return {original,content:JSON.stringify(next,null,2),next,revision:digest(original)};
+  return {original,content:JSON.stringify(next,null,2),next,revision:digest(original),previewRevision:digest(JSON.stringify({original,content:next,context:this.getContext()}))};
  }
- async preview(){const p=await this.prepare(),before=JSON.parse(p.original);return {revision:p.revision,changes:{added:p.next.filter(m=>!before.some(x=>x.id===m.id)).map(m=>m.id),removed:before.filter(m=>!p.next.some(x=>x.id===m.id)).map(m=>m.id),updated:p.next.filter(m=>before.some(x=>x.id===m.id&&JSON.stringify(x)!==JSON.stringify(m))).map(m=>m.id)},warnings:['只更新本项目模型；原配置将在应用前加密备份。'],rotation:this.status().rotation};}
+ async preview(){const p=await this.prepare(),before=JSON.parse(p.original);return {revision:p.previewRevision,changes:{added:p.next.filter(m=>!before.some(x=>x.id===m.id)).map(m=>m.id),removed:before.filter(m=>!p.next.some(x=>x.id===m.id)).map(m=>m.id),updated:p.next.filter(m=>before.some(x=>x.id===m.id&&JSON.stringify(x)!==JSON.stringify(m))).map(m=>m.id)},warnings:['只更新本项目模型；原配置将在应用前加密备份。'],rotation:this.status().rotation};}
  async begin(){return this.mutate(async()=>{if(this.data.rotation)fail('已有密钥轮换，请完成或回滚');const r={id:randomUUID(),newKey:'mb_'+randomBytes(32).toString('base64url'),stage:'pending',createdAt:new Date().toISOString()};await this.commit({...this.data,rotation:r});return {rotationId:r.id};});}
  async writeClient(content,expected){if(digest(await readFile(this.targetPath,'utf8'))!==expected)fail('WorkBuddy 配置已变化，请重新预览');const temp=this.targetPath+'.'+randomUUID()+'.tmp';try{await writeFile(temp,content,{flag:'wx',mode:0o600});if(digest(await readFile(this.targetPath,'utf8'))!==expected)fail('WorkBuddy 配置已变化，请重新预览');await rename(temp,this.targetPath);}finally{await unlink(temp).catch(e=>{if(e.code!=='ENOENT')throw e;});}}
  async apply({rotationId,expectedClientRevision}){return this.mutate(async()=>{
   const r=this.data.rotation;if((r?.id||undefined)!==(rotationId||undefined))fail('密钥轮换状态已变化');
   if(r&&r.stage!=='pending')fail('新密钥配置已应用，请先完成或回滚');
-  const p=await this.prepare();if(p.revision!==expectedClientRevision)fail('WorkBuddy 配置已变化，请重新预览');
+  const p=await this.prepare();if(p.previewRevision!==expectedClientRevision)fail('WorkBuddy 配置已变化，请重新预览');
   const id=randomUUID();await saveVault(join(this.dataDir,`client-backup-${id}.dpapi`),{path:this.targetPath,content:p.original});
   const backup={id,appliedRevision:digest(p.content),originalRevision:p.revision};
   await this.commit({...this.data,lastBackup:backup,...(r?{rotation:{...r,stage:'applying',backup}}:{})});

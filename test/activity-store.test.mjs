@@ -27,3 +27,9 @@ test('corrupt last line is isolated and shutdown/restart do not lose valid rows'
  const [file]=await readdir(s.dir);await appendFile(join(s.dir,file),'BROKEN\n');
  const next=new ActivityStore(s.dataDir,()=>({loggingToFile:true}));await next.init();assert.equal(next.summary({}).requests,1);assert.equal(next.summary({}).invalidRows,1);
 });
+
+test('shortened retention applies to reads and disk without a new request',async t=>{
+ let days=7;const s=new ActivityStore(await fixture(t),()=>({loggingToFile:true,logRetentionDays:days}));await s.init();
+ await s.append({...record('old'),finishedAt:new Date(Date.now()-2*86400000).toISOString()});days=1;
+ assert.equal(s.query({}).items.length,0);assert.equal(s.export({}).records.length,0);await s.queue;assert.deepEqual(await readdir(s.dir),[]);
+});

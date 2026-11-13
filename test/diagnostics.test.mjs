@@ -1,6 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {classifyFailure} from '../src/diagnostics.mjs';
+import {safeError} from '../src/service.mjs';
+test('sanitized transport errors retain the classified identity and recovery fields',()=>{
+ for(const error of [new TypeError('SECRET'),Object.assign(new Error('SECRET'),{name:'TimeoutError'}),Object.assign(new Error('SECRET'),{name:'AbortError'})]){
+   error.details=classifyFailure(error,{requestId:'fixture',stage:'connect'});const value=safeError(error);
+   assert.equal(value.requestId,'fixture');assert.equal(value.category,error.details.category);assert.equal(value.source,error.details.source);assert.ok(value.nextAction);assert.doesNotMatch(JSON.stringify(value),/SECRET/);
+ }
+});
 test('diagnostics separate validation, network, quota and upstream failures without leaking text',()=>{
  const cases=[
  [Object.assign(new Error('SECRET user text'),{details:{httpStatus:400,code:'unsupported_parameter',param:'reasoning.effort',source:'client'}}),'validation',400,'client'],

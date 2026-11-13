@@ -23,7 +23,7 @@ try {
   let gateway;
   try{gateway=await loadVault(join(dataDir,'gateway-key.dpapi'));}catch(error){if(error.code!=='ENOENT')throw error;gateway={key:'mb_'+randomBytes(32).toString('base64url')};await saveVault(join(dataDir,'gateway-key.dpapi'),gateway);}
   const baseUrl=`http://127.0.0.1:${Number(process.env.MODELBRIDGE_PORT||43821)}`;
-  const clientAccess=new ClientAccess({dataDir,targetPath:join(process.env.USERPROFILE,'.workbuddy','models.json'),base:baseUrl,getModels:()=>service.status().models});await clientAccess.init();service.clientAccess=clientAccess;
+  const clientAccess=new ClientAccess({dataDir,targetPath:join(process.env.USERPROFILE,'.workbuddy','models.json'),base:baseUrl,getContext:()=>service.context,getModels:()=>service.status().models});await clientAccess.init();service.clientAccess=clientAccess;
   server = createApp({ service, controlKey, gatewayKey:gateway.key, clientAccess });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(Number(process.env.MODELBRIDGE_PORT || 43821), '127.0.0.1', resolve); });
   const base = `http://127.0.0.1:${server.address().port}`;

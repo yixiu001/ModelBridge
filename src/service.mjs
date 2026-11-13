@@ -24,6 +24,8 @@ import { prepareRequest } from "./request-contract.mjs";
 import { classifyFailure } from "./diagnostics.mjs";
 
 export function safeError(error) {
+  if(error.details?.category && error.details?.source)
+    return classifyFailure(error,{requestId:error.details.requestId,stage:error.details.source==='client'?'validate':'connect'});
   if (error.name === "AbortError")
     return { message: "操作已取消", code: "cancelled", httpStatus: 499 };
   if (error.name === "TimeoutError")
@@ -64,6 +66,7 @@ export class BridgeService {
     this.gatewayActive = 0;
     this.toolStates = new Map();
     this.stateWrite = Promise.resolve();
+    this.grantWrite = Promise.resolve();
   }
   async init() {
     await mkdir(this.dataDir, { recursive: true });
@@ -272,8 +275,15 @@ export class BridgeService {
       });
     return this.refreshPromise;
   }
+  async updateGrant(key,partition,changes,{persist=true}={}) {
+    const operation=this.grantWrite.catch(()=>{}).then(async()=>{
+      const next=structuredClone(this.vault);if(!next.accounts[key])throw new Error('account no longer exists');
+      const target=partition==='quota'?next.accounts[key].quotaAuth:next.accounts[key];if(!target)throw new Error('authorization no longer exists');
+      Object.assign(target,changes);if(persist)await saveVault(this.vaultPath,next);this.vault=next;
+    });this.grantWrite=operation;return operation;
+  }
   async refreshAccess() {
-    const account = this.account;
+    const key=this.vault.active, account = this.account;
     if (!account.refresh_token) throw new Error("登录已过期，需要重新登录");
     const tokens = await this.json(TOKEN_ENDPOINT, {
       method: "POST",
@@ -285,8 +295,7 @@ export class BridgeService {
       }),
     });
     this.validateTokens(tokens);
-    const next = structuredClone(this.vault);
-    Object.assign(next.accounts[next.active], {
+    await this.updateGrant(key,"inference",{
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token || account.refresh_token,
       scopes:
@@ -298,8 +307,6 @@ export class BridgeService {
       lastAutomaticRefresh: new Date().toISOString(),
       refreshError: null,
     });
-    await saveVault(this.vaultPath, next);
-    this.vault = next;
     if (!this.account.scopes.includes(DIRECT_SCOPE))
       throw new Error("会员用量权限已不可用");
     return tokens.access_token;

@@ -4,7 +4,8 @@ import { requireModel, outputText } from "./protocol.mjs";
 
 function fail(code) {
   const error = new Error(code);
-  error.details = { code: code.split(":")[0] };
+  const upstream=/^(unexpected_upstream_tool|tool_delta_before_item|unsupported_upstream_output)/.test(code);
+  error.details = { code: code.split(":")[0],source:upstream?'upstream':'client',httpStatus:upstream?502:400 };
   throw error;
 }
 const clientStringMetadata = [

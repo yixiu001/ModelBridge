@@ -43,7 +43,8 @@ export class ActivityStore {
    this.items.push(r);this.ids.add(r.id);if(this.trim())await this.compact();
   });this.queue=operation;return operation;
  }
- filtered({from,to,filters={}}={}){return this.items.filter(r=>r.kind===(filters.kind||'request')&&(!from||r.finishedAt>=from)&&(!to||r.finishedAt<=to)&&Object.entries(filters).every(([k,v])=>!v||v==='all'||(k==='category'?r.failure?.category:k==='source'?r.failure?.source:r[k])===v));}
+ expire(){if(this.trim()){this.queue=this.queue.catch(()=>{}).then(()=>this.compact());this.queue.catch(()=>{});}return this.queue;}
+ filtered({from,to,filters={}}={}){this.expire();return this.items.filter(r=>r.kind===(filters.kind||'request')&&(!from||r.finishedAt>=from)&&(!to||r.finishedAt<=to)&&Object.entries(filters).every(([k,v])=>!v||v==='all'||(k==='category'?r.failure?.category:k==='source'?r.failure?.source:r[k])===v));}
  query({cursor,limit=100,...query}={}){
   const all=this.filtered(query).reverse(),index=cursor?all.findIndex(r=>r.id===cursor):-1;
   if(cursor&&index<0)return {items:[],nextCursor:null,cursorExpired:true};
@@ -51,9 +52,10 @@ export class ActivityStore {
   return {items,nextCursor:index+1+items.length<all.length?items.at(-1)?.id:null};
  }
  summary(query={}){
+  const hourly=new Map();for(const r of this.filtered(query)){const hour=r.finishedAt.slice(0,13)+':00:00.000Z';const row=hourly.get(hour)||{hour,successes:0,failures:0,cancelled:0};row[r.status==='forwarded'?'successes':r.status==='cancelled'?'cancelled':'failures']++;hourly.set(hour,row);}
   const rows=this.filtered(query),knownUsage={inputTokens:0,outputTokens:0,totalTokens:0},categories={};let unknownUsageCount=0;
   for(const r of rows){if(r.usage.totalTokens===null)unknownUsageCount++;for(const k of Object.keys(knownUsage))if(r.usage[k]!==null)knownUsage[k]+=r.usage[k];if(r.failure?.category)categories[r.failure.category]=(categories[r.failure.category]||0)+1;}
-  return {requests:rows.length,successes:rows.filter(r=>r.status==='forwarded').length,failures:rows.filter(r=>r.status==='failed').length,cancelled:rows.filter(r=>r.status==='cancelled').length,knownUsage,unknownUsageCount,categories,from:query.from||null,to:query.to||null,coverageStart:this.items[0]?.finishedAt||null,coverageEnd:this.items.at(-1)?.finishedAt||null,truncated:this.truncated,invalidRows:this.invalidRows};
+  return {trend:[...hourly.values()].sort((a,b)=>a.hour.localeCompare(b.hour)),requests:rows.length,successes:rows.filter(r=>r.status==='forwarded').length,failures:rows.filter(r=>r.status==='failed').length,cancelled:rows.filter(r=>r.status==='cancelled').length,knownUsage,unknownUsageCount,categories,from:query.from||null,to:query.to||null,coverageStart:this.items[0]?.finishedAt||null,coverageEnd:this.items.at(-1)?.finishedAt||null,truncated:this.truncated,invalidRows:this.invalidRows};
  }
  export(query={}){return {format:'modelbridge-diagnostics-v1',createdAt:new Date().toISOString(),summary:this.summary(query),records:this.filtered(query)};}
 }

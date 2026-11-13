@@ -293,9 +293,7 @@ export class StandaloneService extends BridgeService {
     try { return await super.refreshAccess(); }
     catch(e){
       if(this.vault.accounts[key]){
-        const next=structuredClone(this.vault);
-        next.accounts[key].refreshError=classifyFailure(e,{stage:"authorize"});
-        await saveVault(this.vaultPath,next);this.vault=next;
+        await this.updateGrant(key,"inference",{refreshError:classifyFailure(e,{stage:"authorize"})});
       }
       throw e;
     }
@@ -339,10 +337,11 @@ export class StandaloneService extends BridgeService {
     if (action === "select") return this.selectAccount(key);
     if (!["enable", "disable", "remove", "refresh"].includes(action))
       fail("未知账号操作");
-    this.mutating = true;
+    this.mutating = true;let refreshingGrant=false;
     try {
       const next = structuredClone(this.vault);
       if (action === "refresh") {
+        refreshingGrant=true;
         const tokens = await this.json(TOKEN_ENDPOINT, {
           method: "POST",
           body: new URLSearchParams({
@@ -369,7 +368,7 @@ export class StandaloneService extends BridgeService {
       if (next.active === key && (action === "remove" || action === "disable"))
         next.active = null;
       await saveVault(this.vaultPath, next);
-      this.vault = next;
+      this.vault = next;refreshingGrant=false;
       if (next.active !== key || action !== "refresh") {
         this.models = [];
         this.upstreamModels = [];
@@ -378,6 +377,8 @@ export class StandaloneService extends BridgeService {
       if (this.account && !this.account.disabled)
         await this.refreshCatalog({ internal: true });
       return { ok: true };
+    } catch(error) {
+      if(refreshingGrant&&this.vault.accounts[key]){const next=structuredClone(this.vault);next.accounts[key].refreshError=classifyFailure(error,{stage:'authorize'});await saveVault(this.vaultPath,next);this.vault=next;}throw error;
     } finally {
       this.mutating = false;
     }
@@ -443,7 +444,7 @@ export class StandaloneService extends BridgeService {
     if (!account) fail("账号不存在");
     this.mutating = true;
     this.quotaReading = true;
-    let result;
+    let result,refreshing=false;
     try {
       let grant = account.quotaAuth;
       if (!grant)
@@ -452,6 +453,7 @@ export class StandaloneService extends BridgeService {
           message: "请先授权读取配额，使用与当前账号相同的 ChatGPT 账号登录。",
         });
       if (grant.expiresAt <= Date.now() + 60000) {
+        refreshing=true;
         const tokens = await this.json(CODEX_TOKEN, {
           method: "POST",
           body: new URLSearchParams({
@@ -467,10 +469,11 @@ export class StandaloneService extends BridgeService {
           access_token: tokens.access_token,
           refresh_token: tokens.refresh_token || grant.refresh_token,
           expiresAt: Date.now() + tokens.expires_in * 1000,
+          lastRefresh: new Date().toISOString(),lastAutomaticRefresh: new Date().toISOString(),refreshError:null,
         };
         next.accounts[key].quotaAuth = grant;
         await saveVault(this.vaultPath, next);
-        this.vault = next;
+        this.vault = next;refreshing=false;
       }
       // Credential writes are complete. The read must not block model requests;
       // quotaReading still fences account removal/switching until it finishes.
@@ -489,6 +492,7 @@ export class StandaloneService extends BridgeService {
         },
       );
       if (!response.ok) {
+        if([401,403].includes(response.status)){await this.updateGrant(key,'quota',{refreshError:classifyFailure(Object.assign(new Error('quota authorization'),{details:{httpStatus:response.status,code:'quota_authorization_required',source:'upstream'}}),{stage:'authorize'})},{persist:!!this.initialized});}
         await response.body?.cancel();
         result = {
           status: [401, 403].includes(response.status)
@@ -505,6 +509,7 @@ export class StandaloneService extends BridgeService {
           ...parseCodexQuota(await response.json()),
         };
     } catch (e) {
+      if(refreshing){const next=structuredClone(this.vault);next.accounts[key].quotaAuth.refreshError=classifyFailure(e,{stage:'authorize'});if(this.initialized)await saveVault(this.vaultPath,next);this.vault=next;}
       const status = e.details?.httpStatus;
       result = {
         status: [400, 401, 403].includes(status)
@@ -675,6 +680,7 @@ export class StandaloneService extends BridgeService {
       const check=this.previewModelRules({rules:data.document?.values});if(check.errors.length)fail(check.errors.join("；"));
       const snapshot = await restoreSettings(this.dataDir, data);
       this.prefs = snapshot.values; this.timeoutSeconds = this.prefs.timeoutSeconds;
+      if(this.initialized)await this.activity.expire().catch(()=>{this.storageError="日志清理失败；配置已生效，请检查本机目录权限";});
       this.applyRules(); await this.loadReports(); return snapshot;
     } finally { this.mutating = false; }
   }
@@ -689,6 +695,7 @@ export class StandaloneService extends BridgeService {
       if(JSON.stringify(prefs.aliases)!==JSON.stringify(this.prefs.aliases)||JSON.stringify(prefs.excluded)!==JSON.stringify(this.prefs.excluded)){const check=this.previewModelRules({rules:prefs});if(check.errors.length)fail(check.errors.join("；"));}
       const snapshot = await saveSettings(this.dataDir, {revision, values:prefs});
       this.prefs = snapshot.values; this.timeoutSeconds = this.prefs.timeoutSeconds;
+      if(this.initialized)await this.activity.expire().catch(()=>{this.storageError="日志清理失败；配置已生效，请检查本机目录权限";});
       this.applyRules(); await this.loadReports();
       await this.logEvent("settings_saved");
       return this.settings();

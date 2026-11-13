@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 const fail = (code) => {
   const e = new Error(code);
-  e.details = { code, httpStatus: 400 };
+  e.details = { code, httpStatus: 400, source: "client" };
   throw e;
 };
 export function convertHistory(

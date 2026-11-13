@@ -1,3 +1,4 @@
+import {OperationEpoch} from "../../console-state.mjs";
 import {BatchResults} from "../../components/BatchResults.jsx";
 import React, { useState, useEffect, useRef } from "react";
 import {
@@ -45,6 +46,8 @@ export function AccountsPage({
     [edit, setEdit] = useState(null),
     [batch, setBatch] = useState(null),
     [callback, setCallback] = useState("");
+  const modelEpoch=useRef(new OperationEpoch());
+  useEffect(()=>()=>modelEpoch.current.invalidate(),[]);
   const batchControl=useRef({running:false,cancel:false});
   useEffect(()=>()=>{batchControl.current.cancel=true;},[]);
   const [form] = Form.useForm();
@@ -259,9 +262,10 @@ export function AccountsPage({
                     size="small"
                     onClick={() =>
                       action(async () => {
+                        const ticket=modelEpoch.current.begin(a.key);
                         setModels({ account: a, loading: true });
                         const r = await api("accounts/models", { key: a.key });
-                        setModels({ account: a, ...r });
+                        if(modelEpoch.current.current(ticket,a.key))setModels({ account: a, ...r });
                       })
                     }
                   >
@@ -354,7 +358,7 @@ export function AccountsPage({
       <Drawer
         title={`${models?.account.note || models?.account.label || ""} · 支持的模型`}
         open={!!models}
-        onClose={() => setModels(null)}
+        onClose={() => {modelEpoch.current.invalidate();setModels(null);}}
         size="large"
       >
         <Table

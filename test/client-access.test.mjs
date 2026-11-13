@@ -27,3 +27,8 @@ test('completion refuses client edits after verification and retains both keys',
  const {a,target}=await setup(t);const {rotationId}=await a.begin(),key=a.copyKey();await a.apply({rotationId,expectedClientRevision:(await a.preview()).revision});await a.noteSuccessfulKey(key);
  await writeFile(target,'[]');await assert.rejects(()=>a.complete(rotationId),e=>e.details.httpStatus===409);assert.equal(a.accepts('OLD_SECRET'),true);assert.equal(a.accepts(key),true);
 });
+test('preview binds the proposed content and account context as well as client bytes',async t=>{
+ const {a,target}=await setup(t);const before=await readFile(target,'utf8');let context='account-a';a.getContext=()=>context;const preview=await a.preview();context='account-b';
+ await assert.rejects(()=>a.apply({expectedClientRevision:preview.revision}),e=>e.details.httpStatus===409);assert.equal(await readFile(target,'utf8'),before);
+ const next=await a.preview();a.getModels=()=>[...models,{...models[0],slug:'extra'}];await assert.rejects(()=>a.apply({expectedClientRevision:next.revision}));assert.equal(await readFile(target,'utf8'),before);
+});

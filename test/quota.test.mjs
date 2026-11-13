@@ -114,6 +114,7 @@ test("quota failure clears stale availability, sanitizes upstream errors and doe
   const q = await s.quota("a");
   assert.equal(q.status, "authorization_required");
   assert.equal(count, 2);
+  assert.equal(s.status().accounts[0].health.quota.state,'sign_in_required');
   assert.doesNotMatch(JSON.stringify(q), /QUOTA_SECRET|PRIVATE_ID/);
   assert.equal(s.status().accounts[0].quota.freshness, 'stale');
   assert.equal(s.status().accounts[0].quota.previous.windows[0].usedPercent,12);
