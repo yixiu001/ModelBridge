@@ -295,6 +295,7 @@ export class BridgeService {
           : account.scopes,
       expiresAt: Date.now() + tokens.expires_in * 1000,
       lastRefresh: new Date().toISOString(),
+      lastAutomaticRefresh: new Date().toISOString(),
       refreshError: null,
     });
     await saveVault(this.vaultPath, next);

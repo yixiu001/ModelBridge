@@ -34,7 +34,7 @@ export class ClientAccess {
   return {state:'applied',backupId:id,configured:p.next.filter(m=>m.url===this.base+'/workbuddy/v1/chat/completions').map(m=>m.id)};
  });}
  async noteSuccessfulKey(key){const r=this.data.rotation;if(!r||!secureEqual(key,r.newKey)||r.verifiedAt||!['applied','applying'].includes(r.stage)||this.busy)return;await this.mutate(()=>this.commit({...this.data,rotation:{...r,stage:'verified',verifiedAt:new Date().toISOString()}}));}
- async complete(rotationId){return this.mutate(async()=>{const r=this.data.rotation;if(!r||r.id!==rotationId||!r.verifiedAt)fail('请先使用新密钥完成连接验证');await this.commit({...this.data,key:r.newKey,rotation:null,lastBackup:null});return {state:'completed'};});}
+ async complete(rotationId){return this.mutate(async()=>{const r=this.data.rotation;if(!r||r.id!==rotationId||!r.verifiedAt)fail('请先使用新密钥完成连接验证');if(digest(await readFile(this.targetPath,'utf8'))!==r.backup?.appliedRevision)fail('WorkBuddy 配置在验证后发生变化，请先恢复或重新预览');await this.commit({...this.data,key:r.newKey,rotation:null,lastBackup:null});return {state:'completed'};});}
  async restoreBackup(backup){
   if(!backup||!/^[a-f0-9-]{36}$/.test(backup.id))fail('没有可恢复的备份');
   const original=await loadVault(join(this.dataDir,`client-backup-${backup.id}.dpapi`));

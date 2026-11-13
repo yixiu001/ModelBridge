@@ -1,14 +1,13 @@
+import {SettingsPage} from "./features/settings/SettingsPage.jsx";
+import {VerificationPage} from "./features/verification/VerificationPage.jsx";
+import {hasUnsavedDrafts} from "./console-state.mjs";
 import {ClientsPage} from "./features/clients/ClientsPage.jsx";
 import {OverviewPage} from "./features/overview/OverviewPage.jsx";
 import {LogsPage} from "./features/logs/LogsPage.jsx";
 import {ModelsPage} from "./features/models/ModelsPage.jsx";
 import { AccountsPanel, QuotaPanel } from "./account-panels.jsx";
 import {
-  OverviewMetrics,
   RulesPanel,
-  SettingsPanel,
-  LogsPanel,
-  ReportsPanel,
   ConnectionGuide,
 } from "./operation-panels.jsx";
 import React, { useState, useEffect, useRef } from "react";
@@ -145,14 +144,19 @@ function Console() {
   useEffect(() => {
     refresh();
     const timer = setInterval(refresh, 3000);
-    const hash = () =>
+    const unload = e => {if(hasUnsavedDrafts()){e.preventDefault();e.returnValue='';}};
+    window.addEventListener('beforeunload',unload);
+    const hash = () => {
+      if(hasUnsavedDrafts())message.info('未保存草稿已保留；关闭或刷新页面前请保存或导出');
       setPage(
         pages.some((p) => p[0] === location.hash.slice(1))
           ? location.hash.slice(1)
           : "overview",
       );
+    };
     window.addEventListener("hashchange", hash);
     return () => {
+      window.removeEventListener("beforeunload",unload);
       clearInterval(timer);
       window.removeEventListener("hashchange", hash);
     };
@@ -218,243 +222,19 @@ function Console() {
       settingsForm.setFieldsValue(result);
     }
   }
-  const testsColumns = [
-    { title: "模型", dataIndex: "model", ellipsis: true },
-    { title: "验证项目", dataIndex: "kind", render: (v) => kinds[v] || v },
-    { title: "结果", dataIndex: "status", render: statusTag },
-    { title: "完成时间", dataIndex: "finishedAt", render: date },
-    {
-      title: "",
-      render: (_, r) => (
-        <Button type="link" onClick={() => setDetails(r)}>
-          详情
-        </Button>
-      ),
-    },
-  ];
-  const logsColumns = [
-    { title: "时间", dataIndex: "startedAt", render: date, width: 190 },
-    {
-      title: "模型",
-      dataIndex: "model",
-      render: (v) => v || "模型目录",
-      ellipsis: true,
-    },
-    { title: "HTTP", dataIndex: "httpStatus", width: 75 },
-    { title: "状态", dataIndex: "status", render: statusTag, width: 130 },
-    {
-      title: "",
-      render: (_, r) => (
-        <Button type="link" onClick={() => setDetails(r)}>
-          查看
-        </Button>
-      ),
-      width: 70,
-    },
-  ];
-  const filteredLogs = [...traffic]
-    .reverse()
-    .filter(
-      (r) =>
-        (logFilter === "all" || r.status !== "forwarded") &&
-        (!query ||
-          JSON.stringify([r.model, r.httpStatus, r.errorCode])
-            .toLowerCase()
-            .includes(query.toLowerCase())),
-    );
-  const busy = state?.busy && (
-    <Alert
-      type="info"
-      showIcon
-      title={`${kinds[state.busy.kind]}验证进行中 · ${state.busy.model}`}
-      description="测试会消耗少量会员用量。长会话验证包含 12 轮连续工具调用，请保持服务运行。"
-      action={
-        <Button onClick={() => action(() => api("cancel", {}))}>
-          取消验证
-        </Button>
-      }
-    />
-  );
   const content = {
-    overview: (
-      <>
-        <section className="hero">
-          <div>
-            <span className="eyebrow">YOUR CODEX WORKSPACE</span>
-            <Title level={2}>一个入口，连接你的模型。</Title>
-            <Paragraph>
-              管理 Codex 账号、查看配额，让模型在 WorkBuddy 中稳定工作。
-            </Paragraph>
-            <Space>
-              <Button
-                type="primary"
-                size="large"
-                onClick={() => (location.hash = "connection")}
-              >
-                接入 WorkBuddy
-              </Button>
-              <Button size="large" onClick={() => (location.hash = "accounts")}>
-                管理账号
-              </Button>
-            </Space>
-          </div>
-          <div className="hero-mark" aria-hidden="true">
-            M<span>↗</span>
-          </div>
-        </section>
-        <Row gutter={[16, 16]}>
-          {[
-            ["引擎状态", ready ? "已连接" : "未连接"],
-            ["Codex 账号", accounts.length],
-            ["可用模型", models.length],
-            [
-              "工具验证通过",
-              models.filter((m) => m.checks.tools.status === "passed").length,
-            ],
-          ].map(([label, value]) => (
-            <Col xs={12} lg={6} key={label}>
-              <Card>
-                <Statistic title={label} value={value} />
-              </Card>
-            </Col>
-          ))}
-        </Row>
-        <Row gutter={[20, 20]}>
-          <Col xs={24} lg={15}>
-            <Card
-              title="接入流程"
-              extra={
-                <Button
-                  type="link"
-                  onClick={() => (location.hash = "connection")}
-                >
-                  查看接入信息
-                </Button>
-              }
-            >
-              <Steps
-                direction="vertical"
-                current={!ready ? 0 : !accounts.length ? 1 : 2}
-                items={[
-                  {
-                    title: "启动 ModelBridge",
-                    description: "本机独立运行，无需安装其他代理服务",
-                  },
-                  {
-                    title: "登录 Codex 账号",
-                    description: "通过 OpenAI 官方页面完成 OAuth 授权",
-                  },
-                  {
-                    title: "验证模型并接入客户端",
-                    description: "验证工具调用，保存 WorkBuddy 连接配置",
-                  },
-                ]}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} lg={9}>
-            <Card title="服务信息">
-              <Descriptions
-                column={1}
-                items={[
-                  { key: "v", label: "ModelBridge", children: "0.3.1" },
-                  {
-                    key: "e",
-                    label: "请求处理",
-                    children: "ModelBridge 独立实现",
-                  },
-                  {
-                    key: "t",
-                    label: "目录更新",
-                    children: date(state?.catalogAt),
-                  },
-                  {
-                    key: "a",
-                    label: "进行中的请求",
-                    children: state?.gatewayActive || 0,
-                  },
-                ]}
-              />
-              <Paragraph type="secondary">
-                会员授权、模型请求和工具兼容均由本项目直接处理。
-              </Paragraph>
-            </Card>
-          </Col>
-        </Row>
-        <Card title="最近请求">
-          <Table
-            size="small"
-            rowKey="id"
-            columns={logsColumns}
-            dataSource={[...traffic].reverse().slice(0, 5)}
-            pagination={false}
-            locale={{
-              emptyText: (
-                <Empty description="暂无请求，接入客户端后会显示在这里" />
-              ),
-            }}
-          />
-        </Card>
-      </>
-    ),
+    overview: state ? <OverviewPage state={state}/> : null,
     accounts: state ? (
       <AccountsPanel {...{ state, api, action, blocked, login, loginUrl }} />
     ) : null,
     quota: state ? <QuotaPanel {...{ state, api, action, blocked }} /> : null,
     models: <ModelsPage {...{state,api,action,blocked,verify}}/>,
     connection: <ClientsPage {...{state,api,action,blocked,copy}}/>,
-    tests: (
-      <>
-        <Card title="真实调用验证">
-          <Paragraph type="secondary">
-            使用所选模型进行实际请求。文件测试只操作隔离测试目录；MCP
-            测试使用本机测试工具，不访问业务数据。
-          </Paragraph>
-          <div className="test-form">
-            <div>
-              <Text>模型</Text>
-              <Select
-                aria-label="验证模型"
-                value={selected}
-                onChange={setSelected}
-                options={models
-                  .filter((m) => m.selectable)
-                  .map((m) => ({ value: m.slug, label: m.slug }))}
-              />
-            </div>
-            <div>
-              <Text>验证项目</Text>
-              <Select
-                aria-label="验证项目"
-                value={kind}
-                onChange={setKind}
-                options={Object.entries(kinds).map(([value, label]) => ({
-                  value,
-                  label,
-                }))}
-              />
-            </div>
-            <Button
-              type="primary"
-              loading={working}
-              disabled={!ready || blocked || !selected}
-              onClick={() => verify(selected, kind)}
-            >
-              开始验证
-            </Button>
-          </div>
-          <Paragraph type="secondary" className="spaced">
-            长会话测试包含约 64 KiB 测试内容、12
-            轮连续工具调用、工具报错和历史内容回忆，需要数分钟。
-          </Paragraph>
-        </Card>
-        <ReportsPanel reports={reports} columns={testsColumns} />
-      </>
-    ),
+    tests: <VerificationPage {...{state,api,action,blocked,verify}}/>,
     logs: state ? (
-      <LogsPanel {...{ state, api, action, refresh }} onDetail={setDetails} />
+      <LogsPage {...{state,api,action}}/>
     ) : null,
-    settings: <SettingsPanel {...{ api, action, blocked }} />,
+    settings: <SettingsPage {...{ api, action, blocked }} />,
   };
   if (state) {
     content.overview = <OverviewPage state={state}/>;
@@ -547,7 +327,7 @@ function Console() {
                 <Text type="secondary">你的账号，你的模型，你的工作流。</Text>
               </div>
               <Text type="secondary" className="local-label">
-                本机运行 · 0.3.1
+                本机运行 · {state?.engine.version || "0.4.0"}
               </Text>
             </div>
             {(error || state?.lastError?.message) && (

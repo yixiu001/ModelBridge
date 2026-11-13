@@ -22,3 +22,8 @@ test('old key is revoked only after explicit completion and a verified new-key r
  const {a}=await setup(t);const {rotationId}=await a.begin();const key=a.copyKey();await a.apply({rotationId,expectedClientRevision:(await a.preview()).revision});
  await assert.rejects(()=>a.complete(rotationId));await a.noteSuccessfulKey(key);await a.complete(rotationId);assert.equal(a.accepts('OLD_SECRET'),false);assert.equal(a.accepts(key),true);assert.equal(a.status().rotation,null);assert.equal(a.status().lastBackup,null);
 });
+
+test('completion refuses client edits after verification and retains both keys',async t=>{
+ const {a,target}=await setup(t);const {rotationId}=await a.begin(),key=a.copyKey();await a.apply({rotationId,expectedClientRevision:(await a.preview()).revision});await a.noteSuccessfulKey(key);
+ await writeFile(target,'[]');await assert.rejects(()=>a.complete(rotationId),e=>e.details.httpStatus===409);assert.equal(a.accepts('OLD_SECRET'),true);assert.equal(a.accepts(key),true);
+});

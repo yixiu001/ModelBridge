@@ -108,9 +108,11 @@ export function createApp({ service, controlKey, gatewayKey, clientAccess }) {
             });
           chunks.push(chunk);
         }
-        const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
         const requestContext = {id:randomUUID(),accountKey:service.vault?.active,credentialRevision:service.account?.credentialRevision ?? 1};
         res.setHeader("X-ModelBridge-Request-Id",requestContext.id);
+        let body;
+        try {body=JSON.parse(Buffer.concat(chunks).toString("utf8"));if(!body||typeof body!=='object'||Array.isArray(body))throw new SyntaxError('object required');}
+        catch(error){error.details=classifyFailure(Object.assign(error,{details:{code:'invalid_json',source:'client',httpStatus:400}}),{requestId:requestContext.id});await service.recordRejected?.(error,{},apiPath,requestContext);return json(400,{error:error.details});}
         const controller = new AbortController();
         let heartbeat;
         const stopHeartbeat=()=>clearInterval(heartbeat);
@@ -228,7 +230,7 @@ export function createApp({ service, controlKey, gatewayKey, clientAccess }) {
       const chunks = [];
       for await (const chunk of req) {
         bytes += chunk.length;
-        if (bytes > 16_384) return json(413, { error: "request too large" });
+        if (bytes > 262_144) return json(413, { error: "request too large" });
         chunks.push(chunk);
       }
       const data = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
@@ -292,6 +294,8 @@ export function createApp({ service, controlKey, gatewayKey, clientAccess }) {
         return json(200, await service.saveModelRules(data));
       if (url.pathname === "/api/logs/engine" && service.engineLogs)
         return json(200, await service.engineLogs());
+      if(url.pathname==="/api/system/read" && service.systemInfo)return json(200,service.systemInfo());
+      if(url.pathname==="/api/system/latest" && service.latestVersion)return json(200,await service.latestVersion());
       if (url.pathname === "/api/settings/document" && service.settingsDocument)
         return json(200, service.settingsDocument());
       if (url.pathname === "/api/settings/preview" && service.previewSettings)

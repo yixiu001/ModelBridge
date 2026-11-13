@@ -1,0 +1,3 @@
+import React from 'react';
+import {Button,Space,Table,Tag} from 'antd';
+export function BatchResults({items,onRetryFailed,onCancel}){const names={queued:'排队中',running:'进行中',succeeded:'成功',failed:'失败',cancelled:'已取消'};return <><Space>{onCancel&&<Button onClick={onCancel}>取消剩余操作</Button>}{onRetryFailed&&<Button disabled={!items.some(i=>i.state==='failed')} onClick={onRetryFailed}>仅重试失败项</Button>}</Space><Table rowKey="key" pagination={false} size="small" dataSource={items} columns={[{title:'对象',render:(_,r)=>r.label||r.key},{title:'结果',render:(_,r)=><Tag color={r.state==='failed'?'error':r.state==='succeeded'?'success':'default'}>{names[r.state]}</Tag>},{title:'说明',dataIndex:'message'}]}/></>;}

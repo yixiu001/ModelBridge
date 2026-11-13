@@ -4,6 +4,18 @@ import { createApp } from '../src/http.mjs';
 import { request } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 
+test('malformed inference JSON receives a matching identity and validation record',async t=>{
+ let recorded;const server=createApp({service:{recordRejected:async(e,b,p,c)=>{recorded={error:e.details,context:c};}},controlKey:'admin',gatewayKey:'inference'});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>server.close(r)));
+ const response=await fetch(`http://127.0.0.1:${server.address().port}/v1/chat/completions`,{method:'POST',headers:{authorization:'Bearer inference','content-type':'application/json'},body:'{'});
+ assert.equal(response.status,400);const data=await response.json();assert.ok(response.headers.get('x-modelbridge-request-id'));assert.equal(data.error.requestId,response.headers.get('x-modelbridge-request-id'));assert.equal(recorded.error.category,'validation');
+});
+test('SSE heartbeat is a comment after actual output and stops with the stream',async t=>{
+ const server=createApp({service:{prefs:{heartbeatSeconds:5},chat:async(b,{onChunk})=>{onChunk({choices:[{delta:{content:'hello'}}]});await delay(5100);return {}; }},controlKey:'admin',gatewayKey:'inference'});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>server.close(r)));
+ const response=await fetch(`http://127.0.0.1:${server.address().port}/v1/chat/completions`,{method:'POST',headers:{authorization:'Bearer inference','content-type':'application/json'},body:JSON.stringify({model:'chosen',stream:true})});const body=await response.text();assert.match(body,/: heartbeat/);assert.ok(body.indexOf('hello')<body.indexOf(': heartbeat'));assert.match(body,/data: \[DONE\]/);
+});
+
 test('loopback control rejects unauthenticated, foreign-host and cross-origin mutations', async () => {
   const service = { status: () => ({ account: { connected: false } }) };
   const server = createApp({ service, controlKey: 'test-control-secret' });

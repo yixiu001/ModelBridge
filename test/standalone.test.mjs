@@ -10,6 +10,11 @@ const model = {
   selectable: true,
   declared: { supported_reasoning_levels: [{ effort: "low" }] },
 };
+test('system information and manual release checks expose no environment credentials',async t=>{
+ const {s}=await setup(t);const info=s.systemInfo();assert.equal(info.mode,'standalone');assert.ok(info.nodeVersion);assert.doesNotMatch(JSON.stringify(info),/SECRET_TOKEN/);
+ s.fetcher=async url=>{assert.equal(url,'https://api.github.com/repos/yixiu001/ModelBridge/releases/latest');return Response.json({tag_name:'v0.4.0',html_url:'https://github.com/yixiu001/ModelBridge/releases/tag/v0.4.0',body:'PRIVATE'});};
+ assert.deepEqual(await s.latestVersion(),{version:'v0.4.0',url:'https://github.com/yixiu001/ModelBridge/releases/tag/v0.4.0'});
+});
 test('catalog failures preserve a marked snapshot and old reports remain historical',async t=>{
  const {s}=await setup(t);await s.refreshCatalog();
  await s.saveReport({model:'chosen',kind:'tools',status:'passed',context:s.context});

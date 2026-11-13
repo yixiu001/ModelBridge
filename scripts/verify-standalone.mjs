@@ -25,20 +25,15 @@ const report = {
   implementation: state.engine.mode, version: state.engine.version,
   results: [],
 };
-const path = new URL("direct-acceptance.json", local);
+const path = new URL("upgrade-acceptance.json", local);
 for (const model of models) {
-  for (const kind of ["tools", "files", "mcp"]) {
+  for (const kind of ["text", "tools", "files", "mcp", "long"]) {
     const result = await call("verify", { model, kind });
     report.results.push(result);
     await writeFile(path, JSON.stringify(report, null, 2));
-    console.log(JSON.stringify(result));
+    console.log(JSON.stringify({model,kind,status:result.status,requests:result.requests,toolCalls:result.toolCalls,error:result.error}));
   }
 }
-const long = await call("verify", {
-  model: models.includes("gpt-6.1-sol") ? "gpt-6.1-sol" : models[0],
-  kind: "long",
-});
-report.results.push(long);
 report.finishedAt = new Date().toISOString();
 report.status = report.results.every((r) => r.status === "passed")
   ? "passed"
@@ -48,7 +43,7 @@ console.log(
   JSON.stringify({
     status: report.status,
     checks: report.results.length,
-    long,
+    models: models.length,
   }),
 );
 if (report.status !== "passed") process.exitCode = 1;

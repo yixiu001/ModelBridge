@@ -1,3 +1,4 @@
+import {execFileSync} from 'node:child_process';
 import { mkdir, open, writeFile, unlink } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -15,7 +16,9 @@ let lock, server;
 try {
   lock = await open(lockPath, 'wx');
   await lock.writeFile(String(process.pid));
-  const service = new StandaloneService({ dataDir }); await service.init();
+  const service = new StandaloneService({ dataDir });
+  try{service.buildCommit=execFileSync('git',['rev-parse','--short','HEAD'],{cwd:fileURLToPath(new URL('..',import.meta.url)),windowsHide:true,encoding:'utf8',timeout:2000,stdio:['ignore','pipe','ignore']}).trim();}catch{}
+  await service.init();
   const controlKey = randomBytes(32).toString('base64url');
   let gateway;
   try{gateway=await loadVault(join(dataDir,'gateway-key.dpapi'));}catch(error){if(error.code!=='ENOENT')throw error;gateway={key:'mb_'+randomBytes(32).toString('base64url')};await saveVault(join(dataDir,'gateway-key.dpapi'),gateway);}

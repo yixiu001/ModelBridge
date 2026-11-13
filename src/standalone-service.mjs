@@ -31,6 +31,7 @@ import {projectAccountState} from "./account-state.mjs";
 import {QuotaJobs} from "./quota-jobs.mjs";
 import {catalogRevision, diffCatalog, previewModelRules, verificationKey} from "./model-catalog.mjs";
 import {ActivityStore} from "./activity-store.mjs";
+import packageInfo from "../package.json" with {type:"json"};
 const hash = (v) =>
   createHash("sha256").update(JSON.stringify(v)).digest("hex");
 const fail = (message, code = "invalid_input", httpStatus = 400) => {
@@ -42,6 +43,7 @@ export class StandaloneService extends BridgeService {
   constructor(options) {
     super(options);
     this.direct = true;
+    this.startedAt=new Date().toISOString();
     this.timeoutSeconds = 180;
     this.traffic = [];
     this.quotas = new Map();
@@ -139,7 +141,7 @@ export class StandaloneService extends BridgeService {
       phase: "独立 Codex OAuth 网关",
       engine: {
         name: "ModelBridge",
-        version: "0.3.1",
+        version: packageInfo.version,
         mode: "standalone",
         configured: !!this.account,
         reachable: this.reachable,
@@ -654,6 +656,15 @@ export class StandaloneService extends BridgeService {
     this.lastError = null;
     this.closeQuotaCallback();
   }
+  systemInfo(){return {version:packageInfo.version,commit:this.buildCommit||'未提供',mode:'standalone',nodeVersion:process.version,startedAt:this.startedAt,listener:'127.0.0.1',networkMode:process.env.HTTPS_PROXY||process.env.HTTP_PROXY||process.env.ALL_PROXY?'沿用环境代理（凭据隐藏）':'直接连接/系统环境',supported:['Codex OAuth','Chat Completions','无存储 Responses','完整历史工具调用'],unsupported:['自动换号与重试','WebSocket响应链','API提供商','插件','远程管理']};}
+  async latestVersion(){
+    const r=await this.fetcher('https://api.github.com/repos/yixiu001/ModelBridge/releases/latest',{headers:{Accept:'application/vnd.github+json'},redirect:'error',signal:AbortSignal.timeout(10000)});
+    if(r.status===404)return {version:null,message:'本项目尚未发布可查询的Release'};
+    if(!r.ok)fail('版本查询失败，请稍后重试','release_query_failed',502);
+    const value=await r.json();
+    if(typeof value.tag_name!=='string'||value.tag_name.length>60||typeof value.html_url!=='string'||!value.html_url.startsWith('https://github.com/yixiu001/ModelBridge/releases/tag/'))fail('发布信息格式不符');
+    return {version:value.tag_name,url:value.html_url};
+  }
   settingsDocument() { return settingsSnapshot(this.prefs); }
   settings() { return { ...this.prefs, revision: this.settingsDocument().revision }; }
   previewSettings(data) { return previewSettings(this.settingsDocument(), data.values); }
@@ -675,7 +686,7 @@ export class StandaloneService extends BridgeService {
     const prefs = values ?? {...this.prefs, ...fields};
     this.mutating = true;
     try {
-      const check=this.previewModelRules({rules:prefs});if(check.errors.length)fail(check.errors.join("；"));
+      if(JSON.stringify(prefs.aliases)!==JSON.stringify(this.prefs.aliases)||JSON.stringify(prefs.excluded)!==JSON.stringify(this.prefs.excluded)){const check=this.previewModelRules({rules:prefs});if(check.errors.length)fail(check.errors.join("；"));}
       const snapshot = await saveSettings(this.dataDir, {revision, values:prefs});
       this.prefs = snapshot.values; this.timeoutSeconds = this.prefs.timeoutSeconds;
       this.applyRules(); await this.loadReports();
