@@ -8,6 +8,17 @@ export function prepareRequest({protocol,body,catalog,profile='strict'}){
  const model=requireModel(catalog,body.model);
  if(!['strict','workbuddy','workbuddy-v1'].includes(profile))reject('unknown_compatibility_profile');
  if(protocol==='chat'&&!Array.isArray(body.messages))reject('invalid_chat_request','messages');
+ if(protocol==='chat'&&body.messages.some(m=>!m||typeof m!=='object'||Array.isArray(m)))reject('invalid_message','messages');
+ if(body.tools!==undefined){
+  if(!Array.isArray(body.tools))reject('invalid_tools','tools');
+  for(const tool of body.tools){
+   if(!tool||typeof tool!=='object'||Array.isArray(tool))reject('invalid_tool_definition','tools');
+   const fn=protocol==='chat'?tool.function:tool;
+   if(tool.type==='function'&&(!fn||typeof fn!=='object'||Array.isArray(fn)))reject('invalid_tool_definition','tools.function');
+   if(fn?.parameters!==undefined&&(!fn.parameters||typeof fn.parameters!=='object'||Array.isArray(fn.parameters)))reject('invalid_tool_schema','tools.parameters');
+   if(fn?.strict!==undefined&&typeof fn.strict!=='boolean')reject('invalid_tool_schema','tools.strict');
+  }
+ }
  const prepared=protocol==='chat'?prepareCompatibility(body,catalog,profile==='workbuddy-v1'?'workbuddy':profile):{body,adjustments:[]};
  body=prepared.body;
  const effort=protocol==='chat'?body.reasoning_effort:body.reasoning?.effort;

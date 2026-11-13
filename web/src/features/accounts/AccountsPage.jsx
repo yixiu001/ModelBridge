@@ -211,7 +211,7 @@ export function AccountsPage({
                         : "default"
                   }
                 >
-                  {a.active
+                  {accountState(a)==="problem" ? "需要检查" : a.active
                     ? "当前使用"
                     : {
                         active: "可用",

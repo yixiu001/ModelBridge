@@ -7,7 +7,7 @@ export function LogsPage({state,api,action}){
  const generation=useRef(0),filters={kind,status,model,source};
  const query=()=>({from:new Date(Date.now()-hours*3600000).toISOString(),filters});
  const read=async(more=false)=>{const gen=++generation.current;try{const r=await api('activity/read',{...query(),limit:100,cursor:more?cursor:undefined});if(gen!==generation.current)return;setItems(old=>more?[...old,...r.items]:r.items);setCursor(r.nextCursor);setError(r.cursorExpired?'历史记录已因保留策略变化，请刷新': '');}catch{if(gen===generation.current)setError('日志读取失败，请重试');}};
- useEffect(()=>{if(!paused)read();return()=>{generation.current++;};},[paused,kind,status,model,source,hours]);
+ useEffect(()=>{read();return()=>{generation.current++;};},[kind,status,model,source,hours]);
  useEffect(()=>{if(!paused){const timer=setInterval(()=>read(),5000);return()=>clearInterval(timer);}},[paused,kind,status,model,source,hours]);
  return <Card title="运行日志" extra={<Space wrap><Button onClick={()=>setPaused(v=>!v)}>{paused?'继续刷新':'暂停显示'}</Button><Button onClick={()=>read()}>刷新</Button><Button onClick={()=>action(async()=>download('modelbridge-diagnostics.json',await api('activity/export',query())))}>导出脱敏诊断</Button></Space>}>
   <Tabs activeKey={kind} onChange={setKind} items={[{key:'request',label:'模型请求'},{key:'system',label:'系统事件'}]}/>

@@ -2,6 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { prepareRequest } from '../src/request-contract.mjs';
 const catalog=[{slug:'chosen',selectable:true,declared:{supported_reasoning_levels:[{effort:'low'},{effort:'high'}]}}];
+test('malformed tool containers and schemas are client validation failures',()=>{
+ for(const protocol of ['chat','responses'])for(const tools of [{},[null],[{type:'function',function:{name:'echo',parameters:'bad'},name:'echo',parameters:'bad'}]]){
+  assert.throws(()=>prepareRequest({protocol,body:{model:'chosen',messages:[{role:'user',content:'hi'}],input:'hi',tools},catalog}),e=>e.details.source==='client'&&e.details.httpStatus===400);
+ }
+ assert.throws(()=>prepareRequest({protocol:'chat',body:{model:'chosen',messages:[null]},catalog}),e=>e.details.code==='invalid_message');
+});
 test('chat and Responses enforce the same reasoning capabilities without silently lowering',()=>{
  for(const protocol of ['chat','responses']){
   const base=protocol==='chat'?{messages:[{role:'user',content:'hi'}]}:{input:'hi'};

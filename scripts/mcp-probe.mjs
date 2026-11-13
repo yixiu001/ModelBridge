@@ -12,7 +12,7 @@ const [model,...options]=process.argv.slice(2);
 if(!model||options.some(v=>!/^--(turns|padding|pause-after)=\d+$/.test(v)))throw new Error('Usage: node scripts/mcp-probe.mjs <exact-model> [--turns=12] [--padding=65536] [--pause-after=6]');
 const option=(name,fallback)=>Number(options.find(v=>v.startsWith('--'+name+'='))?.split('=')[1]??fallback);
 const turns=option('turns',2),padding=option('padding',0),pauseAfter=option('pause-after',0);
-if(turns<2||turns>30||padding>262144||pauseAfter>=turns)throw new Error('Probe bounds exceeded');
+if(turns<2||turns>30||padding>393216||pauseAfter>=turns)throw new Error('Probe bounds exceeded');
 const local=new URL('../.local/',import.meta.url);
 const control=JSON.parse(await readFile(new URL('control.json',local),'utf8'));
 const {key}=await loadVault(new URL('gateway-key.dpapi',local));

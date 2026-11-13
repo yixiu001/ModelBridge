@@ -452,14 +452,14 @@ export class BridgeService {
       fields: Object.keys(body),
       stream: body.stream === true,
       messageCount: body.messages?.length,
-      roles: body.messages?.map((m) => m.role),
-      messageFields: body.messages?.map((m) => Object.keys(m)),
+      roles: Array.isArray(body.messages)?body.messages.map((m) => m?.role):undefined,
+      messageFields: Array.isArray(body.messages)?body.messages.map((m) => m&&typeof m==='object'?Object.keys(m):[]):undefined,
       reasoningEffort:
         typeof body.reasoning_effort === "string"
           ? body.reasoning_effort.slice(0, 32)
           : undefined,
       toolCount: body.tools?.length || 0,
-      toolResults: body.messages?.filter((m) => m.role === "tool").length || 0,
+      toolResults: Array.isArray(body.messages)?body.messages.filter((m) => m?.role === "tool").length:0,
     };
     try {
       if (!this.models.length) await this.refreshCatalog();

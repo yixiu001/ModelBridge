@@ -1004,7 +1004,7 @@ export class StandaloneService extends BridgeService {
             m.content?.trim() !== "MODELBRIDGE_OK" ||
             (kind === "tools" && !report.toolCalls)
           )
-            fail("验证结果不符");
+            throw Object.assign(new Error("模型返回与测试期望不符；这是验收断言失败，不代表HTTP400"),{details:{code:'probe_assertion_failed',source:'gateway'}});
           report.status = "passed";
           break;
         }

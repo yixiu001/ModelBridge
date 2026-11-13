@@ -13,6 +13,10 @@ const model = {
 test('invalid tool history is classified as client validation before inference',async t=>{
  const {s,calls}=await setup(t);await assert.rejects(()=>s.chat({model:'chosen',messages:[{role:'tool',tool_call_id:'missing',content:'x'}]}),e=>e.details.source==='client'&&e.details.category==='validation');assert.equal(calls.length,0);
 });
+test('a failed probe answer is an assertion failure and never a fabricated HTTP400',async t=>{
+ const {s}=await setup(t);s.chat=async()=>({choices:[{message:{content:'different answer'}}]});
+ const result=await s.verify('chosen','text');assert.equal(result.status,'failed');assert.equal(result.error.code,'probe_assertion_failed');assert.equal(result.error.httpStatus,undefined);
+});
 test('concurrent grant updates merge inference rotation and quota failure',async t=>{
  const {s}=await setup(t);s.vault.accounts.a.quotaAuth={access_token:'quota',expiresAt:0};
  await Promise.all([s.updateGrant('a','inference',{access_token:'rotated',refresh_token:'rotated-refresh'}),s.updateGrant('a','quota',{refreshError:{httpStatus:401,code:'invalid_grant'}})]);

@@ -9,7 +9,9 @@ export const count = (value) =>
 export const accountState = (a) =>
   a.disabled
     ? "disabled"
-    : a.status === "active" && !a.unavailable
+    : a.health && (a.health.inference.state!=="ready" || ["refresh_failed","sign_in_required","expired"].includes(a.health.quota.state))
+      ? "problem"
+      : a.status === "active" && !a.unavailable
       ? "active"
       : "problem";
 export const remaining = (a) => {
