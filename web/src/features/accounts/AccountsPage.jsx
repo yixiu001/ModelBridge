@@ -1,3 +1,4 @@
+import { MoreOutlined } from '@ant-design/icons';
 import {OperationEpoch} from "../../console-state.mjs";
 import {BatchResults} from "../../components/BatchResults.jsx";
 import React, { useState, useEffect, useRef } from "react";
@@ -7,6 +8,8 @@ import {
   Button,
   Card,
   Col,
+  Collapse,
+  Dropdown,
   Descriptions,
   Drawer,
   Empty,
@@ -91,11 +94,11 @@ export function AccountsPage({
     });
   return (
     <>
-      <Card title="账号接入流程">
+      <Collapse className="account-guide" defaultActiveKey={accounts.length?[]:["guide"]} items={[{key:"guide",label:"账号接入指南",children:<>
         <Steps size="small" current={accounts.length ? (accounts.some(a=>a.health?.quota.state!=='missing')?2:1):0} items={[{title:'模型调用授权'},{title:'配额授权（可稍后）'},{title:'目录与验证'},{title:'接入客户端'}]}/>
         <Paragraph className="spaced">模型调用和配额读取分别授权；跳过配额授权不影响已完成的模型授权。</Paragraph>
         <Space wrap><Button onClick={()=>location.hash='models'}>查看模型目录</Button><Button onClick={()=>location.hash='tests'}>调用验证</Button><Button onClick={()=>location.hash='connection'}>客户端接入</Button></Space>
-      </Card>
+      </>}]} />
       <Row gutter={[16, 16]}>
         {[
           ["全部账号", accounts.length],
@@ -105,8 +108,8 @@ export function AccountsPage({
             accounts.filter((a) => accountState(a) === "problem").length,
           ],
         ].map(([title, value]) => (
-          <Col xs={24} md={8} key={title}>
-            <Card>
+          <Col xs={8} key={title}>
+            <Card className="metric-card">
               <Statistic title={title} value={value} />
             </Card>
           </Col>
@@ -147,7 +150,7 @@ export function AccountsPage({
             ]}
           />
         </div>
-        <Space wrap className="spaced">
+        {selected.length>0 && <Space wrap className="selection-toolbar">
           <Text>已选 {selected.length} 个</Text>
           {["enable", "disable", "refresh"].map((type) => (
             <Button
@@ -167,7 +170,7 @@ export function AccountsPage({
           <Button disabled={!selected.length} onClick={() => setSelected([])}>
             取消选择
           </Button>
-        </Space>
+        </Space>}
         <Table
           className="spaced"
           rowKey="key"
@@ -175,9 +178,9 @@ export function AccountsPage({
           rowSelection={{
             selectedRowKeys: selected,
             onChange: setSelected,
-            getCheckboxProps: () => ({ disabled: locked }),
+            getCheckboxProps: (account) => ({ disabled: locked, 'aria-label': `选择 ${account.note || account.label}` }),
           }}
-          scroll={{ x: 1000 }}
+          scroll={{ x: 760 }}
           pagination={{
             defaultPageSize: 10,
             showSizeChanger: true,
@@ -191,9 +194,7 @@ export function AccountsPage({
                   <Button type="link" onClick={() => setDetail(a)}>
                     {a.note || a.label}
                   </Button>
-                  <div>
-                    <Text type="secondary">{a.label}</Text>
-                  </div>
+                  {a.note && <div><Text type="secondary">{a.label}</Text></div>}
                 </>
               ),
               sorter: (a, b) =>
@@ -228,96 +229,27 @@ export function AccountsPage({
             },
             {
               title: "列表排序",
+              responsive: ["xl"],
               dataIndex: "priority",
               sorter: (a, b) => a.priority - b.priority,
             },
-            { title: "最近刷新", dataIndex: "lastRefresh", render: date },
+            { title: "最近刷新", responsive: ["lg"], dataIndex: "lastRefresh", render: date },
             {
-              title: "操作",
-              render: (_, a) => (
-                <Space wrap>
-                  <Button
-                    size="small"
-                    disabled={locked || a.disabled || a.active}
-                    onClick={() =>
-                      action(() => api("account", { key: a.key }), "已切换账号")
-                    }
-                  >
-                    使用此账号
-                  </Button>
-                  <Button
-                    size="small"
-                    disabled={locked}
-                    onClick={() => {
-                      setEdit(a);
-                      form.setFieldsValue({
-                        note: a.note || "",
-                        priority: a.priority,
-                      });
-                    }}
-                  >
-                    编辑
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={() =>
-                      action(async () => {
-                        const ticket=modelEpoch.current.begin(a.key);
-                        setModels({ account: a, loading: true });
-                        const r = await api("accounts/models", { key: a.key });
-                        if(modelEpoch.current.current(ticket,a.key))setModels({ account: a, ...r });
-                      })
-                    }
-                  >
-                    模型
-                  </Button>
-                  <Button
-                    size="small"
-                    disabled={locked}
-                    onClick={() =>
-                      confirmBatch([a.key], a.disabled ? "enable" : "disable")
-                    }
-                  >
-                    {a.disabled ? "启用" : "停用"}
-                  </Button>
-                  <Button
-                    size="small"
-                    disabled={locked}
-                    onClick={() => batchAction([a.key], "refresh")}
-                  >
-                    刷新凭证
-                  </Button>
-                  <Button size="small" disabled={locked} onClick={()=>login(a.key)}>
-                    重新授权
-                  </Button>
-                  <Button size="small" disabled={locked} onClick={()=>login(a.key,'quota')}>授权读取配额</Button>
-                  <Button
-                    size="small"
-                    danger
-                    disabled={locked}
-                    onClick={() =>
-                      modal.confirm({
-                        title: "移除这个账号？",
-                        content:
-                          "删除引擎中保存的该账号授权，需要重新登录才能恢复。",
-                        okText: "移除账号",
-                        cancelText: "取消",
-                        onOk: () =>
-                          action(
-                            () =>
-                              api("accounts/action", {
-                                key: a.key,
-                                action: "remove",
-                              }),
-                            "账号已移除",
-                          ),
-                      })
-                    }
-                  >
-                    移除
-                  </Button>
-                </Space>
-              ),
+              title: "操作", width: 142, fixed: 'right',
+              render: (_, a) => <Space size={4}>
+                <Button type="text" size="small" disabled={locked} onClick={()=>{setEdit(a);form.setFieldsValue({note:a.note||'',priority:a.priority});}}>编辑</Button>
+                <Dropdown trigger={['click']} menu={{items:[
+                  {key:'use',label:'使用此账号',disabled:locked||a.disabled||a.active,onClick:()=>action(()=>api('account',{key:a.key}),'已切换账号')},
+                  {key:'models',label:'查看模型',onClick:()=>action(async()=>{const ticket=modelEpoch.current.begin(a.key);setModels({account:a,loading:true});const r=await api('accounts/models',{key:a.key});if(modelEpoch.current.current(ticket,a.key))setModels({account:a,...r});})},
+                  {type:'divider'},
+                  {key:'toggle',label:a.disabled?'启用账号':'停用账号',disabled:locked,onClick:()=>confirmBatch([a.key],a.disabled?'enable':'disable')},
+                  {key:'refresh',label:'刷新凭证',disabled:locked,onClick:()=>batchAction([a.key],'refresh')},
+                  {key:'login',label:'重新授权',disabled:locked,onClick:()=>login(a.key)},
+                  {key:'quota',label:'授权读取配额',disabled:locked,onClick:()=>login(a.key,'quota')},
+                  {type:'divider'},
+                  {key:'remove',label:'移除账号',danger:true,disabled:locked,onClick:()=>modal.confirm({title:'移除这个账号？',content:'删除引擎中保存的该账号授权，需要重新登录才能恢复。',okText:'移除账号',cancelText:'取消',onOk:()=>action(()=>api('accounts/action',{key:a.key,action:'remove'}),'账号已移除')})},
+                ]}}><Button type="text" size="small" icon={<MoreOutlined/>}>更多</Button></Dropdown>
+              </Space>,
             },
           ]}
         />

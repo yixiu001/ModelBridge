@@ -41,19 +41,22 @@ import {
   Segmented,
   theme,
 } from "antd";
+import { DashboardOutlined, UserOutlined, PieChartOutlined, AppstoreOutlined, ApiOutlined, ExperimentOutlined, FileTextOutlined, SettingOutlined, MenuFoldOutlined, MenuUnfoldOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons';
+import { Grid } from 'antd';
+import { consoleTheme } from './console-theme.mjs';
 import zhCN from "antd/locale/zh_CN";
 import "antd/dist/reset.css";
 import "./style.css";
 const { Title, Text, Paragraph } = Typography;
 const pages = [
-  ["overview", "概览", "◈"],
-  ["accounts", "Codex 账号", "◎"],
-  ["quota", "账号配额", "◷"],
-  ["models", "模型目录", "▦"],
-  ["connection", "客户端接入", "⇄"],
-  ["tests", "调用验证", "✓"],
-  ["logs", "请求日志", "≡"],
-  ["settings", "设置与系统", "⚙"],
+  ["overview", "概览", DashboardOutlined],
+  ["accounts", "Codex 账号", UserOutlined],
+  ["quota", "账号配额", PieChartOutlined],
+  ["models", "模型目录", AppstoreOutlined],
+  ["connection", "客户端接入", ApiOutlined],
+  ["tests", "调用验证", ExperimentOutlined],
+  ["logs", "请求日志", FileTextOutlined],
+  ["settings", "设置与系统", SettingOutlined],
 ];
 const kinds = {
   text: "文本对话",
@@ -110,13 +113,15 @@ async function api(path, data) {
     );
   return result;
 }
-function Console() {
+function Console({dark, setDark}) {
+  const [collapsed,setCollapsed]=useState(false),[navigationOpen,setNavigationOpen]=useState(false);
+  const screens=Grid.useBreakpoint();
+  const mobile=screens.md===false;
   const { message, modal } = AntApp.useApp();
   const [state, setState] = useState(null),
     [error, setError] = useState(""),
     [working, setWorking] = useState(false),
-    [page, setPage] = useState(location.hash.slice(1) || "overview"),
-    [dark, setDark] = useState(localStorage.getItem("mb-theme") === "dark");
+    [page, setPage] = useState(location.hash.slice(1) || "overview");
   const [query, setQuery] = useState(""),
     [modelType, setModelType] = useState("all"),
     [logFilter, setLogFilter] = useState("all"),
@@ -253,89 +258,41 @@ function Console() {
       </>
     );
   }
+  const nav = (compact=false) => <Menu mode="inline" inlineCollapsed={compact} selectedKeys={[page]}
+    onClick={({key})=>{location.hash=key;setQuery('');setNavigationOpen(false);}}
+    items={pages.map(([key,label,Icon])=>({key,label,icon:<Icon/>}))}/>;
+  const brand = <a className="brand" href="#overview" onClick={()=>setNavigationOpen(false)} aria-label="ModelBridge 概览"><span className="brand-icon"><ApiOutlined/></span><span className="brand-text">ModelBridge<small>Codex 控制台</small></span></a>;
+  const status = <div className="sidebar-footer"><div><span className={`status-dot ${ready?'online':''}`}/><span className="brand-text">{ready?'会员通道已连接':'等待账号授权'}</span></div><small className="brand-text">独立运行 · 本机管理</small></div>;
+  const description = {overview:'查看请求活动、账号状态和运行情况。',accounts:'管理登录授权、账号状态与使用顺序。',quota:'查看剩余额度、重置时间与订阅状态。',models:'浏览账号可用模型，核对能力与验证结果。',connection:'配置 WorkBuddy 和其他兼容客户端。',tests:'验证文本、工具调用与长会话的实际表现。',logs:'追踪请求结果，查看错误与兼容处理记录。',settings:'管理运行设置、兼容规则与本机系统信息。'};
   return (
-    <ConfigProvider
-      locale={zhCN}
-      theme={{
-        algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm,
-        token: {
-          colorPrimary: "#16836d",
-          borderRadius: 10,
-          fontFamily: 'Inter, "Segoe UI", "Microsoft YaHei", sans-serif',
-        },
-        components: {
-          Layout: { bodyBg: dark ? "#111a19" : "#f4f7f6" },
-          Menu: { darkItemBg: "#102e29", darkItemSelectedBg: "#275146" },
-        },
-      }}
-    >
+    <>
       <Layout className="app-layout">
-        <Layout.Sider
-          width={230}
-          breakpoint="lg"
-          collapsedWidth={76}
-          className="sidebar"
-        >
-          <a className="brand" href="#overview">
-            <span className="brand-icon">M</span>
-            <span className="brand-text">
-              ModelBridge<small>CODEX 控制台</small>
-            </span>
-          </a>
-          <Menu
-            theme="dark"
-            mode="inline"
-            selectedKeys={[page]}
-            onClick={({ key }) => {
-              location.hash = key;
-              setQuery("");
-            }}
-            items={pages.map(([key, label, icon]) => ({
-              key,
-              label,
-              icon: <span className="nav-icon">{icon}</span>,
-            }))}
-          />
-          <div className="sidebar-footer">
-            <span className={`status-dot ${ready ? "online" : ""}`} />
-            <span className="brand-text">
-              {ready ? "会员通道已连接" : "等待账号授权"}
-            </span>
-            <small className="brand-text">独立运行 · ModelBridge</small>
-          </div>
-        </Layout.Sider>
-        <Layout>
+        {!mobile && <Layout.Sider width={216} collapsedWidth={68} collapsed={collapsed} className="sidebar">{brand}{nav(collapsed)}{status}</Layout.Sider>}
+        <Layout className="main-layout">
           <Layout.Header className="topbar">
-            <Text type="secondary">
-              工作台 <span className="slash">/</span>{" "}
-              <Text strong>{pages.find((p) => p[0] === page)?.[1]}</Text>
-            </Text>
-            <Space>
-              <Tag color="green">Codex OAuth</Tag>
-              <Button
-                type="text"
-                aria-label="切换主题"
-                onClick={() => setDark(!dark)}
-              >
-                {dark ? "☀ 浅色" : "☾ 深色"}
-              </Button>
+            <Space size={12}>
+              <Button type="text" className="navigation-toggle" aria-label={mobile?'打开导航':collapsed?'展开导航':'收起导航'} icon={collapsed||mobile?<MenuUnfoldOutlined/>:<MenuFoldOutlined/>} onClick={()=>mobile?setNavigationOpen(true):setCollapsed(!collapsed)}/>
+              <span className="breadcrumb"><span className="breadcrumb-root">ModelBridge <span className="slash">/</span></span>{pages.find(p=>p[0]===page)?.[1]}</span>
             </Space>
+            <Space size={12}><Tag className="channel-tag">Codex OAuth</Tag><Button type="text" aria-label="切换主题" icon={dark?<SunOutlined/>:<MoonOutlined/>} onClick={()=>setDark(!dark)}/></Space>
           </Layout.Header>
           <Layout.Content className="content">
             <div className="page-heading">
               <div>
                 <Title level={2}>{pages.find((p) => p[0] === page)?.[1]}</Title>
-                <Text type="secondary">你的账号，你的模型，你的工作流。</Text>
+                <Text type="secondary">{description[page] || description.overview}</Text>
               </div>
               <Text type="secondary" className="local-label">
-                本机运行 · {state?.engine.version || "0.4.0"}
+                本机运行 · {state?.engine.version || "—"}
               </Text>
             </div>
             {(error || state?.lastError?.message) && (
               <Alert
                 showIcon
                 type="error"
-                title={error || state.lastError.message}
+                title={error ? "管理连接异常" : "最近一次请求失败"}
+                description={error || state.lastError.message}
+                action={!error && page !== 'logs' ? <Button size="small" onClick={()=>location.hash='logs'}>查看日志</Button> : undefined}
               />
             )}{" "}
             {!state ? (
@@ -364,6 +321,7 @@ function Console() {
           </Layout.Footer>
         </Layout>
       </Layout>
+      <Drawer title="导航" placement="left" open={mobile && navigationOpen} onClose={()=>setNavigationOpen(false)} size={280} className="navigation-drawer">{brand}{nav()}{status}</Drawer>
       <Drawer
         title="记录详情"
         open={!!details}
@@ -504,11 +462,11 @@ function Console() {
           }
         />
       </Modal>
-    </ConfigProvider>
+    </>
   );
 }
-createRoot(document.getElementById("root")).render(
-  <AntApp>
-    <Console />
-  </AntApp>,
-);
+function ThemedConsole() {
+  const [dark,setDark]=useState(localStorage.getItem('mb-theme')==='dark');
+  return <ConfigProvider locale={zhCN} theme={consoleTheme(dark,theme)}><AntApp><Console dark={dark} setDark={setDark}/></AntApp></ConfigProvider>;
+}
+createRoot(document.getElementById("root")).render(<ThemedConsole/>);

@@ -49,6 +49,10 @@ Subscription source: https://github.com/router-for-me/Cli-Proxy-API-Management-C
 
 Endpoint source: https://github.com/router-for-me/Cli-Proxy-API-Management-Center/blob/3d893ec88938c3ceef200a15be6af8cf972564b3/src/utils/quota/constants.ts
 
+The console visual refresh selectively adapts the warm neutral light/dark color palette from `src/styles/themes.scss` at the same fixed revision. Sidebar proportions, restrained borders, compact spacing and responsive navigation were studied in `src/styles/variables.scss` and `src/styles/layout.scss`; ModelBridge implements its own React + Ant Design shell, theme provider and account actions. Primary button and success-text colors are adjusted for contrast. No Management Center runtime, provider pages or service dependency is included.
+
+UI source: https://github.com/router-for-me/Cli-Proxy-API-Management-Center/tree/3d893ec88938c3ceef200a15be6af8cf972564b3/src/styles
+
 ### Management Center license (verbatim)
 
 MIT License
