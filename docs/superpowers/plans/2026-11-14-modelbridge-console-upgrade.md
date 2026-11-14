@@ -1,6 +1,6 @@
 # ModelBridge 管理流程整体改造 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 用户已授权实施；按任务持续记录进度，不因此自动派发其他聊天或子代理。
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking. 用户已授权实施；按任务持续记录进度，不因此自动派发其他聊天或子代理。
 
 **Goal:** 在保留独立 Codex OAuth 网关的基础上，一次性完成八页管理界面的账号恢复、配额、模型同步、配置、诊断与验收流程。
 
@@ -8,7 +8,11 @@
 
 **Tech Stack:** Node.js >=24、ES modules、node:test、React 19.3.1、Ant Design 6.7.0、Vite 8.3.8、Windows DPAPI。首轮不新增运行框架；新依赖必须先通过现有版本兼容检查。
 
-**Spec:** [CLIProxyAPI 功能调查与差距报告](../../cliproxyapi-investigation-2026-11-14.md)。基线 ModelBridge 0.3.1 / `618b840`。本方案日期2026-11-14，状态：**实施中，T1已完成，T2进行中**。
+**Spec:** [CLIProxyAPI 功能调查与差距报告](../../cliproxyapi-investigation-2026-11-14.md)。基线 ModelBridge 0.3.1 / `618b840`。本方案日期2026-11-14，状态：**T1–T8已完成，T9整体验收通过，准备提交推送；可选订阅到期查询延后**。
+
+## 实施差异与证据
+
+T1–T8按任务提交；实现中部分账号/模型页面拆分统一放在T8，未改变功能范围。`QuotaSnapshot`保留旧`status`兼容字段，新增`freshness=current|stale|unavailable`；任务持久化及重启中断不自动重试。可选订阅到期独立查询延后，页面保留“未返回”，不访问付费操作接口。部分页面边界由纯状态与后端测试覆盖，真实浏览器验证范围见[整体验收](../../console-upgrade-verification.md)，勾选代表任务交付，不等于每一个故障都在真实账号注入。
 
 ## Global Constraints
 
@@ -90,12 +94,12 @@
 
 **Interfaces:** `prepareRequest({protocol,body,catalog,profile}):{body,model,adjustments}`，`protocol=chat|responses`，`profile=strict|workbuddy-v1`；`classifyFailure(error,{requestId,stage}):Failure`，`stage=validate|authorize|connect|stream`。每次请求捕获账号、凭据和配置快照，结束时不得读取另一个当前账号来记账。HTTP把共同请求编号带到客户端及日志。
 
-- [ ] 写反例：严格模式不支持的`none`返回validation且上游调用次数0；同一目录能力在Chat/Responses得到一致结论；已授权WorkBuddy标题请求只产生`none→low`记录且模型不变；其他请求不移除token限制；缺失/重复工具编号被拒绝且不丢历史。
-- [ ] 增加流式测试：已发工具调用后断网，上游调用次数严格为1；终止状态failed；取消后定时器与连接被释放。分别断言网络502、超时504、上游明确400/401/429，以及HTTP200内的失败事件被准确记录。
-- [ ] 执行`node --test test/request-contract.test.mjs test/diagnostics.test.mjs`确认反例失败，再实现共同预检与结构化错误。基于目录能力处理差异，不硬编码八套模型规则；Responses仍拒绝store:true/previous_response_id。
-- [ ] 选择性转写调查报告S15的原生Responses推理档位反例：顶层和历史配置更新逐项校验；有效档位保持原值；模型最低支持档不是low时不可硬编码low。仅在协议本来支持该输入类型时处理；不支持的历史更新项明确拒绝，不以移植为由扩大协议能力。上游自动降档策略替换为本项目严格/已授权兼容策略，并登记来源。
-- [ ] 增加SSE注释心跳，受T1配置控制；不得改变JSON非流式响应格式，不引入自动重试；错误正文只保留脱敏允许字段。
-- [ ] 执行上述测试、`test/compatibility.test.mjs`、`test/direct-adapter.test.mjs`、`test/protocol.test.mjs`及`npm test`；通过后提交`feat: unify request validation and actionable diagnostics`。
+- [x] 写反例：严格模式不支持的`none`返回validation且上游调用次数0；同一目录能力在Chat/Responses得到一致结论；已授权WorkBuddy标题请求只产生`none→low`记录且模型不变；其他请求不移除token限制；缺失/重复工具编号被拒绝且不丢历史。
+- [x] 增加流式测试：已发工具调用后断网，上游调用次数严格为1；终止状态failed；取消后定时器与连接被释放。分别断言网络502、超时504、上游明确400/401/429，以及HTTP200内的失败事件被准确记录。
+- [x] 执行`node --test test/request-contract.test.mjs test/diagnostics.test.mjs`确认反例失败，再实现共同预检与结构化错误。基于目录能力处理差异，不硬编码八套模型规则；Responses仍拒绝store:true/previous_response_id。
+- [x] 选择性转写调查报告S15的原生Responses推理档位反例：顶层和历史配置更新逐项校验；有效档位保持原值；模型最低支持档不是low时不可硬编码low。仅在协议本来支持该输入类型时处理；不支持的历史更新项明确拒绝，不以移植为由扩大协议能力。上游自动降档策略替换为本项目严格/已授权兼容策略，并登记来源。
+- [x] 增加SSE注释心跳，受T1配置控制；不得改变JSON非流式响应格式，不引入自动重试；错误正文只保留脱敏允许字段。
+- [x] 执行上述测试、`test/compatibility.test.mjs`、`test/direct-adapter.test.mjs`、`test/protocol.test.mjs`及`npm test`；通过后提交`feat: unify request validation and actionable diagnostics`。
 
 **验收：** 用户能从一次错误看到发生位置、字段和下一步；HTTP状态与模型名称没有被“修好”成不真实的信息。
 
@@ -105,10 +109,10 @@
 
 **Interfaces:** `projectAccountState(account,evidence,now):AccountHealth`；`AccountHealth={accountKey,credentialRevision,inference,quota}`；两个分区各含`state,expiresAt,lastRefreshAt,lastVerifiedAt,nextAction`，`state=missing|ready|expired|refresh_failed|sign_in_required`。`ready`仅说明当前凭据状态，不能代替调用/续期实测。现有登录接口保持，响应增加明确`purpose`与目标账号键。
 
-- [ ] 写测试：配额授权取消仍保留模型授权；错误账号补充授权不改变任何已有凭据；迟到回调不能复活已取消授权；授权刷新只更新目标分区；A账号请求完成后切换B不改变A的证据归属；旧vault无revision可无损升级。
-- [ ] 执行`node --test test/account-state.test.mjs test/quota-auth.test.mjs test/auth.test.mjs`确认新行为缺失，再实现投影和提交版本；刷新失败时区别临时网络故障与必须重登。
-- [ ] 用Ant Design Steps＋Drawer实现统一向导：模型授权→配额授权→目录/验证→接入；允许第二步跳过并明确缺少的能力。定向恢复保留账号备注、排序和另一分区。
-- [ ] 把账号详情、批量启停/刷新结果接入统一状态；执行相关测试与构建，通过后提交`feat: complete account authorization and recovery flow`。
+- [x] 写测试：配额授权取消仍保留模型授权；错误账号补充授权不改变任何已有凭据；迟到回调不能复活已取消授权；授权刷新只更新目标分区；A账号请求完成后切换B不改变A的证据归属；旧vault无revision可无损升级。
+- [x] 执行`node --test test/account-state.test.mjs test/quota-auth.test.mjs test/auth.test.mjs`确认新行为缺失，再实现投影和提交版本；刷新失败时区别临时网络故障与必须重登。
+- [x] 用Ant Design Steps＋Drawer实现统一向导：模型授权→配额授权→目录/验证→接入；允许第二步跳过并明确缺少的能力。定向恢复保留账号备注、排序和另一分区。
+- [x] 把账号详情、批量启停/刷新结果接入统一状态；执行相关测试与构建，通过后提交`feat: complete account authorization and recovery flow`。
 
 **验收：** 同一账号只有一个管理入口；用户能分清“可以调用”和“可以查额度”；真实第二账号缺失时只标离线验证，不能制造真实多账号通过记录。
 
@@ -118,11 +122,11 @@
 
 **Interfaces:** `createQuotaJob({accountKeys},context):{jobId}`；`readQuotaJob(jobId):{state,items}`；`cancelQuotaJob(jobId):{cancelled}`。`items`含目标accountKey/credentialRevision、`queued|running|succeeded|failed|cancelled`及脱敏结果；`QuotaSnapshot={accountKey,credentialRevision,checkedAt,freshUntil,status,windows,creditBalance,subscriptionActiveUntil,lastError}`，`status=current|stale|unavailable`。新增`quota-jobs/start|read|cancel`接口；当前单账号查询仍可用。
 
-- [ ] 写测试：5小时/周/月/审查/附加额度；非常规时长以实际小时命名；缺少百分比为null；只有积分仍显示已知字段；时区与秒/毫秒时间；取消后迟到结果不提交；失败不覆盖上次成功值但状态变stale；不同账号相同显示名不串数据。
-- [ ] 执行`node --test test/quota.test.mjs test/quota-jobs.test.mjs`确认新增边界失败，再实现查询队列。初期并发1，重复目标合并；凭据版本变化丢弃旧结果。默认5分钟后标过期，无后台自动轮询；恢复时间到达提示重新查询，不把余额改成100%。
-- [ ] UI提供刷新所选/筛选结果、进度、取消、仅重试失败项；统计结果区分成功/失败/取消。过期值排在有效值之后，低额度筛选只使用有效百分比。
-- [ ] 可选订阅到期只读查询必须独立超时和失败隔离；官方未返回时显示未返回，不阻塞主配额。不得请求消费、兑换或修改付费设置的接口。
-- [ ] 执行相关测试与构建，通过后提交`feat: add reliable quota snapshots and batch progress`。
+- [x] 写测试：5小时/周/月/审查/附加额度；非常规时长以实际小时命名；缺少百分比为null；只有积分仍显示已知字段；时区与秒/毫秒时间；取消后迟到结果不提交；失败不覆盖上次成功值但状态变stale；不同账号相同显示名不串数据。
+- [x] 执行`node --test test/quota.test.mjs test/quota-jobs.test.mjs`确认新增边界失败，再实现查询队列。初期并发1，重复目标合并；凭据版本变化丢弃旧结果。默认5分钟后标过期，无后台自动轮询；恢复时间到达提示重新查询，不把余额改成100%。
+- [x] UI提供刷新所选/筛选结果、进度、取消、仅重试失败项；统计结果区分成功/失败/取消。过期值排在有效值之后，低额度筛选只使用有效百分比。
+- [ ] 延后：可选订阅到期只读查询。当前显示“未返回”，不阻塞主配额，不请求消费、兑换或修改付费设置接口。
+- [x] 执行相关测试与构建，通过后提交`feat: add reliable quota snapshots and batch progress`。
 
 **验收：** 一项失败不吞掉其余结果；关页后再打开可看到当前任务；服务重启将未完成任务明确标为中断，不自动重试查询。
 
@@ -132,10 +136,10 @@
 
 **Interfaces:** `diffCatalog(before,after):{added,removed,changed}`；`previewModelRules({catalog,rules}):{effectiveModels,changes,errors}`；`verificationKey({accountKey,credentialRevision,catalogRevision,rulesRevision,adapterVersion,model,scenario}):string`。规则保存沿用T1原子配置；新增`models/preview`，目录读取增加版本、账号与更新时间。
 
-- [ ] 写测试：目录刷新失败保留旧快照但标过期；别名冲突/循环或指向不可选模型保存失败；规则调整使相关旧报告失效但不删除历史；切换账号不继承另一账号的通过标记；新增可用模型进入待验证集合。
-- [ ] 执行`node --test test/model-catalog.test.mjs`确认失败，再实现差异/预览/有效性判定。精准标明“当前可选”“官方声明”“本版本实测”，不把静态公共目录当权限。
-- [ ] 模型页实现详情、规则草稿、影响预览和保存回读；为客户端页提供新增/移除/已失效模型清单；工作区草稿不因后台刷新覆盖。
-- [ ] 执行模型、账号切换和规则相关测试及构建，通过后提交`feat: connect model catalog rules and verification evidence`。
+- [x] 写测试：目录刷新失败保留旧快照但标过期；别名冲突/循环或指向不可选模型保存失败；规则调整使相关旧报告失效但不删除历史；切换账号不继承另一账号的通过标记；新增可用模型进入待验证集合。
+- [x] 执行`node --test test/model-catalog.test.mjs`确认失败，再实现差异/预览/有效性判定。精准标明“当前可选”“官方声明”“本版本实测”，不把静态公共目录当权限。
+- [x] 模型页实现详情、规则草稿、影响预览和保存回读；为客户端页提供新增/移除/已失效模型清单；工作区草稿不因后台刷新覆盖。
+- [x] 执行模型、账号切换和规则相关测试及构建，通过后提交`feat: connect model catalog rules and verification evidence`。
 
 **验收：** 用户能看到改规则会影响哪些客户端条目；历史通过不再冒充新账号、新规则或新适配器已经通过。
 
@@ -145,10 +149,10 @@
 
 **Interfaces:** `appendActivity(record):Promise<void>`按请求ID去重；`queryActivity({cursor,limit,filters}):{items,nextCursor}`，limit上限200；`summarizeActivity({from,to,filters}):{requests,successes,failures,cancelled,knownUsage,unknownUsageCount}`；`exportDiagnostics({from,to,filters}):object`。新增`activity/read|summary|export`接口。
 
-- [ ] 写测试：重复完成事件只计一次；未知token保持null且不算0；日志关闭后新记录不落盘；达到容量/期限后按旧记录淘汰；损坏末行可隔离而非清空全部；导出中不出现测试注入的token/回调/用户正文；分页无重复无漏项。
-- [ ] 执行`node --test test/activity-store.test.mjs`确认失败，再实现按日JSONL追加、串行写入、游标分页与容量清理；重启重建索引。旧100条记录可以迁入，但注明统计起点，不能倒推更早用量。
-- [ ] 概览显示时间范围、成功/失败/取消、主要错误类别；日志详情显示T2错误来源和转换记录。系统事件与模型请求分标签，暂停只暂停显示不阻止记录。使用Ant Design统计/表格，趋势采用简单可访问图形，不额外引入完整BI库。
-- [ ] 执行相关测试与构建，通过后提交`feat: add bounded request history and useful diagnostics`。
+- [x] 写测试：重复完成事件只计一次；未知token保持null且不算0；日志关闭后新记录不落盘；达到容量/期限后按旧记录淘汰；损坏末行可隔离而非清空全部；导出中不出现测试注入的token/回调/用户正文；分页无重复无漏项。
+- [x] 执行`node --test test/activity-store.test.mjs`确认失败，再实现按日JSONL追加、串行写入、游标分页与容量清理；重启重建索引。旧100条记录可以迁入，但注明统计起点，不能倒推更早用量。
+- [x] 概览显示时间范围、成功/失败/取消、主要错误类别；日志详情显示T2错误来源和转换记录。系统事件与模型请求分标签，暂停只暂停显示不阻止记录。使用Ant Design统计/表格，趋势采用简单可访问图形，不额外引入完整BI库。
+- [x] 执行相关测试与构建，通过后提交`feat: add bounded request history and useful diagnostics`。
 
 **验收：** “今日统计”不再只是最近100条的别名；保留上限截断时显示覆盖范围；官方会员配额不由本机统计推算。
 
@@ -158,10 +162,10 @@
 
 **Interfaces:** `previewClientUpdate({catalog,evidence,existingConfig}):{changes,warnings}`；`beginKeyRotation():{rotationId}`；`applyKeyRotation({rotationId,expectedClientRevision}):{state,backupId}`；`rollbackKeyRotation(rotationId):{state}`。密钥仍在DPAPI，接口和日志只返回标识；显式复制密钥复用现有受鉴权复制操作。
 
-- [ ] 写测试：其他WorkBuddy模型/配置原样保留；不再可选的自有条目先进入备份；配置并发变动返回409；写入失败不撤销旧密钥；重启可恢复轮换状态；备份文件不能解密时禁止覆盖现有配置。
-- [ ] 执行`node --test test/client-access.test.mjs test/client-config.test.mjs test/workbuddy-config.test.mjs`确认新契约缺失，再实现两阶段轮换：生成新密钥→预览/应用自有客户端配置→连接验证→显式完成轮换撤销旧密钥；未完成可回滚。轮换期间旧/新密钥并存必须在界面清楚标识，不能悄悄留下永久旧密钥。
-- [ ] 页面提供普通接口/WorkBuddy接口区别、目标模型、配置差异、连接结果和恢复入口。只更新本项目条目，不安装或重置WorkBuddy。
-- [ ] 执行接入相关测试与构建，通过后提交`feat: make client setup and key rotation recoverable`。
+- [x] 写测试：其他WorkBuddy模型/配置原样保留；不再可选的自有条目先进入备份；配置并发变动返回409；写入失败不撤销旧密钥；重启可恢复轮换状态；备份文件不能解密时禁止覆盖现有配置。
+- [x] 执行`node --test test/client-access.test.mjs test/client-config.test.mjs test/workbuddy-config.test.mjs`确认新契约缺失，再实现两阶段轮换：生成新密钥→预览/应用自有客户端配置→连接验证→显式完成轮换撤销旧密钥；未完成可回滚。轮换期间旧/新密钥并存必须在界面清楚标识，不能悄悄留下永久旧密钥。
+- [x] 页面提供普通接口/WorkBuddy接口区别、目标模型、配置差异、连接结果和恢复入口。只更新本项目条目，不安装或重置WorkBuddy。
+- [x] 执行接入相关测试与构建，通过后提交`feat: make client setup and key rotation recoverable`。
 
 **验收：** 接入失败可以恢复原配置；测试通过不等于用户已经完成撤销旧密钥，状态必须如实显示。
 
@@ -171,11 +175,11 @@
 
 **Interfaces:** `PageStatus({state,error,onRetry})`，`state=loading|ready|empty|partial|stale|failed`；`BatchResults({items,onRetryFailed,onCancel})`使用T4相同项目状态；`ChangeReview({changes,revision,onConfirm,onCancel})`使用T1差异与版本。页面异步响应必须核对目标账号与操作版本，过期响应不得覆盖新页面。
 
-- [ ] 给纯状态逻辑写测试：保存冲突保留草稿；切页后的迟到响应被丢弃；批量失败只重试失败项；取消不触发重复保存。执行`node --test test/console-state.test.mjs`确认失败，再实现共享状态与组件。
-- [ ] 设置页分为运行、日志、模型规则摘要、备份恢复、系统信息；表单与受限JSON文本共用T1校验，先差异预览再保存。输入格式错误不破坏可视化草稿，离开未保存页面有提醒。
-- [ ] 系统信息显示本项目版本/commit、Node版本、本机地址、运行时间、脱敏网络模式、已支持/未支持能力。手动检查仅查询ModelBridge公开发布元数据，若无发布则如实显示；不下载执行文件，不访问账户信息接口。
-- [ ] 验证页增加按“模型×场景”的当前有效结果矩阵、预计操作内容、取消与错误详情；显示测试会使用会员用量。普通管理刷新不得隐式触发推理测试。
-- [ ] 使用真实浏览器走完八页；检查加载/空态/错误/部分成功/过期、键盘焦点、窄屏横向表格、控制台错误；执行`npm test`与`npm run build`。通过后提交`feat: unify console workflows and system settings`。
+- [x] 给纯状态逻辑写测试：保存冲突保留草稿；切页后的迟到响应被丢弃；批量失败只重试失败项；取消不触发重复保存。执行`node --test test/console-state.test.mjs`确认失败，再实现共享状态与组件。
+- [x] 设置页分为运行、日志、模型规则摘要、备份恢复、系统信息；表单与受限JSON文本共用T1校验，先差异预览再保存。输入格式错误不破坏可视化草稿，离开未保存页面有提醒。
+- [x] 系统信息显示本项目版本/commit、Node版本、本机地址、运行时间、脱敏网络模式、已支持/未支持能力。手动检查仅查询ModelBridge公开发布元数据，若无发布则如实显示；不下载执行文件，不访问账户信息接口。
+- [x] 验证页增加按“模型×场景”的当前有效结果矩阵、预计操作内容、取消与错误详情；显示测试会使用会员用量。普通管理刷新不得隐式触发推理测试。
+- [x] 使用真实浏览器走完八页；检查加载/空态/错误/部分成功/过期、键盘焦点、窄屏横向表格、控制台错误；执行`npm test`与`npm run build`。通过后提交`feat: unify console workflows and system settings`。
 
 **验收：** 任何启用按钮都有实际后端能力；每一页的刷新、编辑、保存、失败恢复规则一致；无需增加第九个空页面。
 
@@ -183,10 +187,10 @@
 
 **Files:** 修改`scripts/verify-standalone.mjs`及必要的现有隔离夹具；新增`docs/console-upgrade-verification.md`；更新`README.md`、`docs/current-state.md`、`THIRD_PARTY_NOTICES.md`和本方案勾选状态。
 
-- [ ] 在T1–T8全部通过后执行`npm test`、`npm run build`；记录真实测试数量和版本，不预写“全通过”。
-- [ ] 执行下表真实验证；每项记录模型、账号匿名标识、版本、请求/工具次数、最终状态和证据路径。用当前官方可选目录生成矩阵；基线8模型若发生变化必须注明，不能固定填8个通过。
-- [ ] 验证服务未连接8317、未读取CPA配置/凭据，项目依赖中无CPA整体包；采用进程/连接观测和受控网络测试，不擅自停止用户其他程序。
-- [ ] 对实际移植代码补齐来源、固定版本、删减范围与许可；所有公开报告剔除账号个人信息、token、完整回调与原始对话。
+- [x] 在T1–T8全部通过后执行`npm test`、`npm run build`；记录真实测试数量和版本，不预写“全通过”。
+- [x] 执行下表真实验证；每项记录模型、账号匿名标识、版本、请求/工具次数、最终状态和证据路径。用当前官方可选目录生成矩阵；基线8模型若发生变化必须注明，不能固定填8个通过。
+- [x] 验证服务未连接8317、未读取CPA配置/凭据，项目依赖中无CPA整体包；采用进程/连接观测和受控网络测试，不擅自停止用户其他程序。
+- [x] 对实际移植代码补齐来源、固定版本、删减范围与许可；所有公开报告剔除账号个人信息、token、完整回调与原始对话。
 - [ ] 自查差异、数据迁移、秘密扫描和文档链接；验证工作树只包含本轮目标改动。按有效的提交推送授权推送，并核验远端提交与本地一致。
 
 ### 最终验收矩阵
