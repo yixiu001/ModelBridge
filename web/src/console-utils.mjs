@@ -6,6 +6,14 @@ export const date = (value) =>
     : "—";
 export const count = (value) =>
   Number.isFinite(value) ? value.toLocaleString("zh-CN") : "—";
+export function subscriptionSummary(quota) {
+  const s=quota?.subscription;
+  let message='尚未查询';
+  if(s?.status==='available')message=quota.freshness!=='current'?'历史快照，请刷新确认':Date.parse(s.activeUntil)<=Date.now()?'官方返回时间已到达，不据此判断调用权限失效':'官方订阅有效期';
+  else if(s?.status==='unavailable')message=s.reason==='missing_account_id'?'账号缺少订阅查询标识':s.reason==='not_returned'?'官方未返回订阅到期时间':'本次未查询订阅';
+  else if(s?.status==='error')message=s.reason==='timeout'?'订阅查询超时，可刷新重试':s.httpStatus?`订阅查询失败（HTTP ${s.httpStatus}）`:s.reason==='cancelled'?'订阅查询已取消':'订阅查询失败，可刷新重试';
+  return {activeUntil:s?.status==='available'?s.activeUntil:null,checkedAt:s?.checkedAt,previous:s?.previous,message};
+}
 export const accountState = (a) =>
   a.disabled
     ? "disabled"

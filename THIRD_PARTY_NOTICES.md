@@ -39,9 +39,15 @@ SOFTWARE.
 
 ## Selective Management Center quota adaptation
 
-`src/vendor/codex-quota.mjs` selectively adapts duration-based window classification and credit-balance validation from `src/features/quota/providers/codex/data.ts` at `3d893ec88938c3ceef200a15be6af8cf972564b3`. It handles only Codex usage windows and safe display fields. ModelBridge requests the official usage endpoint directly with its own grant, never the Management Center API. The port omits redemption, spending controls, subscription lookups, provider/plugin code and UI dependencies; invalid or missing percentages stay unknown instead of being inferred.
+`src/vendor/codex-quota.mjs` selectively adapts duration-based window classification and credit-balance validation from `src/features/quota/providers/codex/data.ts` at `3d893ec88938c3ceef200a15be6af8cf972564b3`. It handles only Codex usage windows and safe display fields. ModelBridge requests the official usage endpoint directly with its own grant, never the Management Center API. The port omits redemption, spending controls, provider/plugin code and UI dependencies; invalid or missing percentages stay unknown instead of being inferred.
 
 Source: https://github.com/router-for-me/Cli-Proxy-API-Management-Center/blob/3d893ec88938c3ceef200a15be6af8cf972564b3/src/features/quota/providers/codex/data.ts
+
+The subscription lookup in `src/codex-subscription.mjs` and `parseCodexSubscription` in `src/vendor/codex-quota.mjs` selectively adapt `fetchCodexSubscriptionActiveUntil`, `parseCodexSubscriptionActiveUntil`, the 8-second optional timeout, and `CODEX_SUBSCRIPTION_URL` from the same fixed Management Center revision. It directly reads the official subscription endpoint with ModelBridge-owned credentials. ModelBridge adds strict date normalization, a bounded response body, cancellation, separate safe error states, and explicitly historical fallback. It does not copy the management API transport, token-metadata fallback, credit redemption or subscription-changing operations.
+
+Subscription source: https://github.com/router-for-me/Cli-Proxy-API-Management-Center/blob/3d893ec88938c3ceef200a15be6af8cf972564b3/src/features/quota/providers/codex/data.ts
+
+Endpoint source: https://github.com/router-for-me/Cli-Proxy-API-Management-Center/blob/3d893ec88938c3ceef200a15be6af8cf972564b3/src/utils/quota/constants.ts
 
 ### Management Center license (verbatim)
 

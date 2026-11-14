@@ -1,6 +1,6 @@
 import React,{useState} from 'react';
 import {Alert,Button,Card,Checkbox,Col,Empty,Input,Progress,Row,Select,Space,Table,Tag,Typography} from 'antd';
-import {date} from '../../console-utils.mjs';
+import {date,subscriptionSummary} from '../../console-utils.mjs';
 const {Text,Paragraph}=Typography;
 const remaining=a=>a.quota?.freshness==='current'?Math.min(...(a.quota.windows||[]).filter(w=>w.usedPercent!==null).map(w=>100-w.usedPercent),Infinity):Infinity;
 export function QuotaPage({state,api,action,blocked}){
@@ -24,14 +24,15 @@ export function QuotaPage({state,api,action,blocked}){
   </Card>}
   {state.quotaLoginPending&&<Alert className="spaced" type="info" title="等待同一ChatGPT账号的配额授权" description={<Space><Button href={loginUrl||undefined} disabled={!loginUrl} target="_blank" rel="noreferrer">打开配额授权页面</Button><Button onClick={()=>action(()=>api('login/cancel',{}))}>取消授权</Button></Space>}/>}
   <Row gutter={[16,16]}>{rows.map(a=>{
-   const q=a.quota,old=q?.previous,windows=q?.windows||old?.windows||[],stale=q?.freshness==='stale';
+   const q=a.quota,old=q?.previous,windows=q?.windows||old?.windows||[],stale=q?.freshness==='stale',subscription=subscriptionSummary(q);
    return <Col xs={24} lg={12} key={a.key}><Card title={<Space><Checkbox checked={selected.includes(a.key)} onChange={e=>setSelected(prev=>e.target.checked?[...prev,a.key]:prev.filter(k=>k!==a.key))}/>{a.note||a.label}</Space>} extra={<Button disabled={locked} onClick={()=>start([a.key])}>刷新配额</Button>}>
     <Space wrap><Tag>{q?.planType||old?.planType||'套餐待查询'}</Tag><Tag color={q?.freshness==='current'?'success':'warning'}>{q?.freshness==='current'?'查询快照有效':stale?'已过期':'尚无有效快照'}</Tag>{a.disabled&&<Tag>账号已停用</Tag>}</Space>
     {q?.status!=='available'&&<Alert className="spaced" type="warning" title={q?.message||'尚未查询'} action={q?.status==='authorization_required'?<Button disabled={locked} onClick={()=>authorize(a.key)}>授权读取配额</Button>:null}/>}
     {stale&&<Alert className="spaced" type="warning" title="以下是历史快照，不能据此判断当前可用额度"/>}
     {windows.map(w=><div className="quota-window" key={w.id}><div className="between"><Text>{w.label}</Text><Text>{w.usedPercent===null?'用量未知':`剩余 ${(100-w.usedPercent).toFixed(0)}%`}</Text></div>{w.usedPercent!==null&&<Progress percent={100-w.usedPercent} showInfo={false} status={w.usedPercent>=80?'exception':'normal'}/>}<Text type="secondary">恢复时间：{date(w.resetAtMs)}{w.resetAtMs? w.resetAtMs>Date.now()?`（约${Math.ceil((w.resetAtMs-Date.now())/60000)}分钟后）`:'（已到达，可重新查询）':''}</Text></div>)}
     {!windows.length&&<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="官方未返回额度窗口"/>}
-    <Paragraph className="spaced" type="secondary">额外积分：{q?.creditsUnlimited?'不限额':q?.creditBalance??old?.creditBalance??'未返回'}<br/>成功查询时间：{date(q?.status==='available'?q.checkedAt:old?.checkedAt)}<br/>最近尝试：{date(q?.checkedAt)}<br/>订阅到期：{q?.subscriptionActiveUntil?date(q.subscriptionActiveUntil):'未返回'}</Paragraph>
+    <Paragraph className="spaced" type="secondary">额外积分：{q?.creditsUnlimited?'不限额':q?.creditBalance??old?.creditBalance??'未返回'}<br/>成功查询时间：{date(q?.status==='available'?q.checkedAt:old?.checkedAt)}<br/>最近尝试：{date(q?.checkedAt)}</Paragraph>
+    <Paragraph><Text strong>订阅到期：{subscription.activeUntil?date(subscription.activeUntil):'—'}</Text><br/><Text type="secondary">{subscription.message}；订阅查询不影响配额结果。</Text>{subscription.checkedAt&&<><br/><Text type="secondary">订阅查询时间：{date(subscription.checkedAt)}</Text></>}{subscription.previous&&<><br/><Text type="warning">上次查到：{date(subscription.previous.activeUntil)}（历史记录，查询于{date(subscription.previous.checkedAt)}）</Text></>}</Paragraph>
    </Card></Col>;
   })}</Row>{!rows.length&&<Empty description="没有符合筛选条件的账号"/>}
  </>;

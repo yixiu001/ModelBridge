@@ -27,7 +27,7 @@ const fixture = {
   credits: { balance: "9.5", unlimited: false },
 };
 function setup(fetcher) {
-  const s = new StandaloneService({ dataDir: ".unused", fetcher });
+  const s = new StandaloneService({ dataDir: ".unused", fetcher:(url,options)=>url.startsWith('https://chatgpt.com/backend-api/subscriptions?')?Promise.resolve(Response.json({})):fetcher(url,options) });
   s.vault = {
     active: "a",
     accounts: {

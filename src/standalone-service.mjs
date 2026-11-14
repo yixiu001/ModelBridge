@@ -29,6 +29,7 @@ import { prepareRequest } from "./request-contract.mjs";
 import { classifyFailure, normalizedUsage } from "./diagnostics.mjs";
 import {projectAccountState} from "./account-state.mjs";
 import {QuotaJobs} from "./quota-jobs.mjs";
+import {readCodexSubscription} from './codex-subscription.mjs';
 import {catalogRevision, diffCatalog, previewModelRules, verificationKey} from "./model-catalog.mjs";
 import {ActivityStore} from "./activity-store.mjs";
 import packageInfo from "../package.json" with {type:"json"};
@@ -444,7 +445,8 @@ export class StandaloneService extends BridgeService {
     if (!account) fail("账号不存在");
     this.mutating = true;
     this.quotaReading = true;
-    let result,refreshing=false;
+    let result,refreshing=false,subscriptionTask;
+    const subscriptionController=new AbortController();
     try {
       let grant = account.quotaAuth;
       if (!grant)
@@ -478,6 +480,7 @@ export class StandaloneService extends BridgeService {
       // Credential writes are complete. The read must not block model requests;
       // quotaReading still fences account removal/switching until it finishes.
       this.mutating = false;
+      subscriptionTask=readCodexSubscription(this.fetcher,grant,{signal:signal?AbortSignal.any([signal,subscriptionController.signal]):subscriptionController.signal});
       const response = await this.fetcher(
         "https://chatgpt.com/backend-api/wham/usage",
         {
@@ -508,6 +511,7 @@ export class StandaloneService extends BridgeService {
           status: "available",
           ...parseCodexQuota(await response.json()),
         };
+      if(result.status==='available')result.subscription=await subscriptionTask;
     } catch (e) {
       if(refreshing){const next=structuredClone(this.vault);next.accounts[key].quotaAuth.refreshError=classifyFailure(e,{stage:'authorize'});if(this.initialized)await saveVault(this.vaultPath,next);this.vault=next;}
       const status = e.details?.httpStatus;
@@ -520,6 +524,8 @@ export class StandaloneService extends BridgeService {
           : "配额查询失败：网络异常、超时或官方未返回有效额度窗口。",
       };
     } finally {
+      subscriptionController.abort();
+      if(subscriptionTask&&result)result.subscription??=await subscriptionTask;
       this.mutating = false;
       this.quotaReading = false;
     }
@@ -533,6 +539,15 @@ export class StandaloneService extends BridgeService {
   }
   async setQuota(key, result) {
     const previous=this.quotas.get(key), a=this.vault.accounts[key];
+    result.subscription??={status:'unavailable',activeUntil:null,checkedAt:new Date().toISOString(),reason:'not_queried'};
+    if(result.subscription){
+      const old=previous?.subscription;
+      if(result.subscription.status!=='available'&&old){
+        const last=old.status==='available'?{activeUntil:old.activeUntil,checkedAt:old.checkedAt}:old.previous;
+        if(last)result.subscription={...result.subscription,previous:last};
+      }
+      result.subscriptionActiveUntil=result.subscription.status==='available'?result.subscription.activeUntil:null;
+    }
     const value={...result,accountKey:key,credentialRevision:a?.credentialRevision||1,quotaRevision:a?.quotaAuth?.credentialRevision||1,checkedAt:new Date().toISOString(),freshUntil:Date.now()+300000};
     if(result.status!=='available'&&previous){value.previous=previous.status==='available'?{windows:previous.windows,planType:previous.planType,creditBalance:previous.creditBalance,checkedAt:previous.checkedAt}:previous.previous;}
     this.quotas.set(key,value);

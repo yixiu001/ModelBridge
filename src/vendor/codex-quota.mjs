@@ -3,6 +3,28 @@
 // src/features/quota/providers/codex/data.ts; see THIRD_PARTY_NOTICES.md.
 // Keeps duration-based window classification; omits UI, redemption and other providers.
 const record = (v) => v && typeof v === "object" && !Array.isArray(v);
+// Selective port of parseCodexSubscriptionActiveUntil from the same upstream
+// data.ts revision. Normalize valid instants; never infer from token expiration.
+export function parseCodexSubscription(payload) {
+  if (typeof payload === 'string') {
+    try { payload = JSON.parse(payload); } catch { return null; }
+  }
+  if (!record(payload)) return null;
+  const value = payload.active_until ?? payload.activeUntil;
+  let ms;
+  if (typeof value === 'number' || typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value.trim())) {
+    const n = Number(value);
+    ms = n > 0 && Number.isFinite(n) ? (n < 1e12 ? n * 1000 : n) : NaN;
+  } else if (typeof value === 'string') {
+    const text=value.trim();
+    const parts=/^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.exec(text);
+    if (!parts) return null;
+    const [,year,month,day]=parts.map(Number);
+    if (month<1 || month>12 || day<1 || day>new Date(Date.UTC(year,month,0)).getUTCDate()) return null;
+    ms=Date.parse(text);
+  }
+  return Number.isFinite(ms) && ms>0 && ms<=8640000000000000 ? new Date(ms).toISOString() : null;
+}
 const number = (v) =>
   (typeof v === "number" || (typeof v === "string" && v.trim())) &&
   Number.isFinite(Number(v))

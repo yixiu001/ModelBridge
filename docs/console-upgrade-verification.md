@@ -1,5 +1,7 @@
 # ModelBridge 0.4.0 整体改造验收
 
+> 后续0.4.1已完成此前延后的订阅到期查询，见[专项验收](subscription-verification-2026-11-14.md)。下文保留0.4.0验收时的真实范围。
+
 日期：2026-11-14，Asia/Shanghai。依据：[整体方案](superpowers/plans/2026-11-14-modelbridge-console-upgrade.md)。一个已有自有账号（匿名标识 `cff514ff`），仅使用隔离测试数据。最终行为基线 `3e918f9`，Node v24.18.0，WorkBuddy 5.9.3。
 
 ## 已交付
