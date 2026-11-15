@@ -53,6 +53,12 @@ The console visual refresh selectively adapts the warm neutral light/dark color 
 
 UI source: https://github.com/router-for-me/Cli-Proxy-API-Management-Center/tree/3d893ec88938c3ceef200a15be6af8cf972564b3/src/styles
 
+The remaining-page refinement studies the structured log filters, pause/refresh controls and status feedback in `src/features/logs/LogsPage.tsx`, plus the information tiles in `src/pages/SystemPage.module.scss`, at the same fixed revision. ModelBridge implements these interactions with its own Ant Design components and existing local APIs, including stale-read guards and cursor pagination. No upstream log transport, provider settings, plugins or service code is added.
+
+Log UI reference: https://github.com/router-for-me/Cli-Proxy-API-Management-Center/blob/3d893ec88938c3ceef200a15be6af8cf972564b3/src/features/logs/LogsPage.tsx
+
+Information tile reference: https://github.com/router-for-me/Cli-Proxy-API-Management-Center/blob/3d893ec88938c3ceef200a15be6af8cf972564b3/src/pages/SystemPage.module.scss
+
 ### Management Center license (verbatim)
 
 MIT License

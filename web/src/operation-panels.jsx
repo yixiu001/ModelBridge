@@ -265,10 +265,10 @@ export function ConnectionGuide({ models }) {
     2,
   );
   return (
-    <Card title="手动接入与配置示例">
+    <Collapse items={[{key:'manual',label:'手动接入与配置示例',children:<>
       <Paragraph>
         接口地址填写
-        http://127.0.0.1:43821/workbuddy/v1，使用上方的本机连接密钥。WorkBuddy
+        {location.origin}/workbuddy/v1，使用上方的本机连接密钥。WorkBuddy
         若要求完整请求地址，填写 /workbuddy/v1/chat/completions。
       </Paragraph>
       <Select
@@ -306,6 +306,6 @@ export function ConnectionGuide({ models }) {
           },
         ]}
       />
-    </Card>
+    </>}]} />
   );
 }

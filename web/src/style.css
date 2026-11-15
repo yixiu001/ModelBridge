@@ -96,6 +96,26 @@ body {margin:0;background:var(--page);color:var(--text);}
 .settings-toggle {grid-column:1 / -1;}
 .settings-actions {padding-top:6px;}
 .model-table .ant-tag {margin-inline-end:0;}
+.endpoint-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
+.endpoint-tile {display:flex;flex-direction:column;align-items:flex-start;gap:12px;background:var(--muted);border:1px solid var(--border);border-radius:8px;padding:18px;min-width:0;}
+.endpoint-tile>.ant-typography-secondary {font-size:12px;}
+.endpoint-tile code {font-size:13px;overflow-wrap:anywhere;white-space:normal;}
+.endpoint-tile .ant-typography {max-width:100%;}
+.section-footer {display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;border-top:1px solid var(--border);padding-top:16px;margin-top:20px;}
+.section-footer .ant-typography-secondary {font-size:12px;}
+.change-preview {border-top:1px solid var(--border);padding-top:18px;}
+.change-preview .ant-tag {white-space:normal;overflow-wrap:anywhere;}
+.task-form {display:flex;align-items:end;gap:16px;flex-wrap:wrap;}
+.task-form>div:not(.ant-space) {display:flex;flex-direction:column;gap:8px;flex:1;min-width:180px;}
+.task-form .ant-select {width:100%;}
+.detail-summary {display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:16px;background:var(--muted);border-radius:8px;margin-bottom:24px;overflow-wrap:anywhere;}
+.detail-error {margin-bottom:20px;}
+.matrix-result {padding-inline:0;}
+.matrix-result .ant-tag {margin:0;}
+.log-filters {display:flex;align-items:center;flex-wrap:wrap;gap:10px;}
+.log-filters>.ant-select {min-width:128px;}
+.log-filters>.ant-input-search {flex:1;min-width:200px;max-width:320px;}
+.list-status {display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:16px;padding:10px 12px;background:var(--muted);border-radius:6px;font-size:12px;}
 @media(max-width:1100px) {.content {padding:24px;}.topbar {padding:0 20px;}}
 @media(max-width:767px) {
  .content {padding:20px 16px;gap:16px;}.topbar {padding:0 12px;height:60px;}.breadcrumb-root,.channel-tag,.local-label {display:none;}
@@ -116,5 +136,11 @@ body {margin:0;background:var(--page);color:var(--text);}
  .settings-fields .ant-form-item-extra {font-size:12px;}
  .query-details summary {min-height:44px;display:list-item;align-content:center;}
  .model-table .ant-btn,.quota-account-card .ant-btn {min-height:36px;}
+ .endpoint-grid {grid-template-columns:minmax(0,1fr);}
+ .task-form {align-items:stretch;flex-direction:column;}
+ .task-form>div:not(.ant-space) {min-width:0;width:100%;}
+ .log-filters>.ant-input-search {max-width:none;flex-basis:100%;}
+ .log-filters>.ant-select {flex:1;}
+ .list-status {align-items:flex-start;}
 }
 @media(prefers-reduced-motion:reduce) {*,*::before,*::after {scroll-behavior:auto!important;transition:none!important;animation:none!important;}}

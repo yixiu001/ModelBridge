@@ -1,6 +1,7 @@
 import React from 'react';
 import {Alert,Button,Card,Col,Descriptions,Empty,Progress,Row,Space,Statistic,Typography} from 'antd';
 import {date} from '../../console-utils.mjs';
+import {failureLabels} from '../../display-labels.mjs';
 export function OverviewPage({state}) {
  const s=state.activitySummary,a=state.accounts.find(a=>a.active);
  const trend=s?.trend||[],max=Math.max(...trend.map(r=>r.successes+r.failures+r.cancelled),1);
@@ -22,6 +23,6 @@ export function OverviewPage({state}) {
     {key:'tokens',label:'已知 token',children:s?`${s.knownUsage.totalTokens.toLocaleString()}（${s.unknownUsageCount} 次未返回用量）`:'尚无统计'},
    ]}/><Space wrap className="spaced"><Button onClick={()=>location.hash='accounts'}>管理账号</Button><Button onClick={()=>location.hash='quota'}>查看配额</Button><Button onClick={()=>location.hash='logs'}>排查请求</Button></Space></Card></Col>
   </Row>
-  <Card title="今日失败分类">{Object.keys(s?.categories||{}).length?Object.entries(s.categories).map(([key,count])=><div key={key}><Typography.Text>{key} · {count}</Typography.Text><Progress percent={s.failures?Math.round(count/s.failures*100):0} strokeColor="var(--failure)" showInfo={false}/></div>):<Typography.Text type="secondary">当前统计范围内没有失败分类记录</Typography.Text>}<Typography.Paragraph type="secondary" className="spaced">统计从本机当天零点开始；本机请求量和 token 合计不代表会员剩余额度。</Typography.Paragraph></Card>
+  <Card title="今日失败分类" extra={<Button type="text" onClick={()=>location.hash='logs'}>查看日志</Button>}>{Object.keys(s?.categories||{}).length?Object.entries(s.categories).map(([key,count])=><div key={key}><Typography.Text>{failureLabels[key]||key} · {count}</Typography.Text><Progress percent={s.failures?Math.round(count/s.failures*100):0} strokeColor="var(--failure)" showInfo={false}/></div>):<Typography.Text type="secondary">当前统计范围内没有失败分类记录</Typography.Text>}<Typography.Paragraph type="secondary" className="spaced">统计从本机当天零点开始；本机请求量和 token 合计不代表会员剩余额度。</Typography.Paragraph></Card>
  </>;
 }
