@@ -290,8 +290,7 @@ function Console({dark, setDark}) {
               <Alert
                 showIcon
                 type="error"
-                title={error ? "管理连接异常" : "最近一次请求失败"}
-                description={error || state.lastError.message}
+                title={`${error ? '管理连接异常' : '最近一次请求失败'}：${error || state.lastError.message}`}
                 action={!error && page !== 'logs' ? <Button size="small" onClick={()=>location.hash='logs'}>查看日志</Button> : undefined}
               />
             )}{" "}

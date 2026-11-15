@@ -66,6 +66,36 @@ body {margin:0;background:var(--page);color:var(--text);}
 .trend-hour .ant-typography {font-size:11px;color:var(--secondary);}
 .navigation-drawer .ant-drawer-body {display:flex;flex-direction:column;padding:0;}
 .navigation-drawer .brand {height:76px;}
+.quota-toolbar {margin-bottom:12px;}
+.quota-toolbar .ant-input-search {flex:1;min-width:180px;max-width:280px;}
+.quota-toolbar-note,.quota-card-status {display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;font-size:12px;}
+.quota-toolbar-note {justify-content:space-between;}
+.quota-account-list {display:flex;flex-direction:column;gap:16px;}
+.quota-account-card .ant-card-head-title {white-space:normal;overflow-wrap:anywhere;}
+.quota-account-content {display:grid;grid-template-columns:minmax(0,1.35fr) minmax(230px,1fr);gap:28px;margin-top:22px;}
+.quota-balances {display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;min-width:0;}
+.quota-balance {background:var(--muted);border-radius:8px;padding:18px;}
+.quota-value {font-size:38px;font-weight:600;line-height:1.2;letter-spacing:-1px;font-variant-numeric:tabular-nums;margin:14px 0 8px;}
+.quota-value>span {font-size:18px;margin-left:4px;font-weight:400;}
+.quota-value>.quota-unknown {font-size:22px;margin:0;}
+.quota-balance .ant-typography-secondary {font-size:12px;line-height:1.8;}
+.subscription-summary {border-left:1px solid var(--border);padding-left:28px;min-width:0;}
+.subscription-date {font-size:19px;font-weight:600;margin:8px 0;overflow-wrap:anywhere;}
+.subscription-summary>.ant-typography-secondary {font-size:12px;}
+.quota-credit {display:flex;justify-content:space-between;gap:12px;border-top:1px solid var(--border);padding:14px 0;margin-top:16px;}
+.query-details {border-top:1px solid var(--border);margin-top:22px;padding-top:12px;font-size:12px;}
+.query-details summary {cursor:pointer;color:var(--secondary);padding:6px 0;}
+.query-details summary:focus-visible {outline:2px solid var(--secondary);outline-offset:2px;}
+.query-details>div {padding:8px 0;line-height:1.9;}
+.query-job-actions {display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px;}
+.settings-section {display:grid;grid-template-columns:180px minmax(0,1fr);gap:24px;padding:22px 0;border-bottom:1px solid var(--border);margin-bottom:18px;}
+.settings-section-heading .ant-typography-secondary {font-size:12px;line-height:1.8;margin:8px 0 0;}
+.settings-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 24px;}
+.settings-fields .ant-form-item {margin-bottom:12px;}
+.settings-fields .ant-input-number {width:100%;max-width:240px;}
+.settings-toggle {grid-column:1 / -1;}
+.settings-actions {padding-top:6px;}
+.model-table .ant-tag {margin-inline-end:0;}
 @media(max-width:1100px) {.content {padding:24px;}.topbar {padding:0 20px;}}
 @media(max-width:767px) {
  .content {padding:20px 16px;gap:16px;}.topbar {padding:0 12px;height:60px;}.breadcrumb-root,.channel-tag,.local-label {display:none;}
@@ -76,5 +106,15 @@ body {margin:0;background:var(--page);color:var(--text);}
  .content .ant-alert {flex-wrap:wrap;}.content .ant-alert-section {min-width:0;flex:1;}.content .ant-alert-actions {width:100%;margin-inline-start:0;margin-top:10px;}
  .navigation-toggle,.topbar .ant-btn,.navigation-drawer .ant-menu-item {min-height:44px;min-width:44px;}.navigation-drawer .ant-menu-item {line-height:44px;}
  .ant-dropdown-menu-item {min-height:44px!important;}
+ .quota-account-content {grid-template-columns:minmax(0,1fr);gap:20px;}
+ .quota-balances {grid-template-columns:minmax(0,1fr);}
+ .subscription-summary {border-left:0;border-top:1px solid var(--border);padding-left:0;padding-top:20px;}
+ .quota-toolbar .ant-input-search {max-width:none;flex-basis:100%;}
+ .quota-account-card .ant-card-head-wrapper {align-items:flex-start;}
+ .settings-section {grid-template-columns:minmax(0,1fr);gap:18px;padding:16px 0;}
+ .settings-fields {gap:8px 16px;}
+ .settings-fields .ant-form-item-extra {font-size:12px;}
+ .query-details summary {min-height:44px;display:list-item;align-content:center;}
+ .model-table .ant-btn,.quota-account-card .ant-btn {min-height:36px;}
 }
 @media(prefers-reduced-motion:reduce) {*,*::before,*::after {scroll-behavior:auto!important;transition:none!important;animation:none!important;}}
